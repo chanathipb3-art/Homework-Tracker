@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}หน้าหลักนักเรียน{% endblock %}
+{% block content %}
+
+<h2>{{ student.name }}
+    <span style="color:#6b7280;font-weight:400;font-size:0.9rem;">({{ student.full_class_label() }})</span>
+</h2>
+
+<div class="status-summary" aria-label="สรุปงานทั้งหมด">
+    <div class="summary-box summary-blue"><div class="summary-num">{{ total_assignments }}</div><div class="summary-label">งานทั้งหมด</div></div>
+    <div class="summary-box summary-green"><div class="summary-num">{{ total_submitted }}</div><div class="summary-label">ส่งแล้ว</div></div>
+    <div class="summary-box summary-yellow"><div class="summary-num">{{ total_assignments - total_submitted }}</div><div class="summary-label">ยังไม่ส่ง</div></div>
+</div>
+
+{% if total_pending > 0 %}
+<div class="alert-banner">
+    ⚠️ คุณมีงานค้างทั้งหมด <strong>{{ total_pending }}</strong> ชิ้น — กดเข้าไปในวิชาเพื่อดูรายละเอียด
+</div>
+{% elif total_closed > 0 %}
+<div class="alert-banner neutral">ไม่มีงานค้างที่ยังส่งได้ · มีงานปิดรับแล้ว {{ total_closed }} ชิ้น</div>
+{% else %}
+<div class="alert-banner ok">✅ตอนนี้คุณไม่มีงานค้างเลย</div>
+{% endif %}
+
+<div class="legend">
+    {% for key, meta in STATUS_META.items() %}
+    <span class="badge badge-{{ meta.color }}">{{ meta.icon }} {{ meta.label }}</span>
+    {% endfor %}
+</div>
+
+<details class="section-toggle" open>
+<summary class="section-title">🗓️ ตารางเรียน ({{ student.full_class_label() }})</summary>
+{% if has_schedule %}
+<div class="period-now-box" id="periodNowBox">
+{% include "_period_box.html" %}
+</div>
+
+
+<div class="schedule-rotate-wrapper" id="studentScheduleTableWrapper">
+<table class="schedule-table fixed-grid" id="studentScheduleTable">
+    <thead>
+        <tr>
+            <th>วัน \ คาบ</th>
+            {% for p in morning %}<th>คาบ {{ p }}</th>{% endfor %}
+            <th class="lunch-head">พักเที่ยง</th>
+            {% for p in afternoon %}<th>คาบ {{ p }}</th>{% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+    {% for i in range(5) %}
+        <tr>
+            <td class="day-col"><strong>{{ days[i] }}</strong></td>
+
+            {% for cell in schedule_rows[i].morning %}
+                {% if cell.empty %}
+                <td class="slot-empty" colspan="{{ cell.colspan }}"></td>
+                {% else %}
+                <td colspan="{{ cell.colspan }}">
+                    <div class="slot-filled">
+                        <strong>{{ cell.slot.subject.name }}</strong><br>
+                        <span style="color:#6b7280;">{{ cell.slot.subject.teacher_names() }}</span>
+                    </div>
+                </td>
+                {% endif %}
+            {% endfor %}
+
+            {% if i == 0 %}
+            <td class="lunch-cell" rowspan="5">
+                <span class="lunch-text">พักเที่ยง</span>
+            </td>
+            {% endif %}
+
+            {% for cell in schedule_rows[i].afternoon %}
+                {% if cell.empty %}
+                <td class="slot-empty" colspan="{{ cell.colspan }}"></td>
+                {% else %}
+                <td colspan="{{ cell.colspan }}">
+                    <div class="slot-filled">
+                        <strong>{{ cell.slot.subject.name }}</strong><br>
+                        <span style="color:#6b7280;">{{ cell.slot.subject.teacher_names() }}</span>
+                        {% if cell.slot.subject.room %}<br><span style="color:#6b7280;">ห้อง {{ cell.slot.subject.room }}</span>{% endif %}
+                    </div>
+                </td>
+                {% endif %}
+            {% endfor %}
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+
+<p style="font-size:0.82rem;color:#6b7280;margin-top:8px;">
+    ตารางนี้สร้างจากตารางสอนที่คุณครูบันทึกไว้ หากครูแก้ไขคาบสอน ตารางนี้จะเปลี่ยนตามอัตโนมัติ
+</p>
+{% else %}
+<p style="color:#6b7280;">ยังไม่มีคาบเรียนของห้อง {{ student.full_class_label() }} ในระบบ — รอคุณครูบันทึกตารางสอนก่อน</p>
+{% endif %}
+</details>
+
+<div class="section-title">รายวิชาทั้งหมด</div>
+
+{% for row in rows %}
+    <a class="subject-card{% if row.worst %} status-{{ status_color(row.worst) }}{% endif %}" href="{{ url_for('student_subject', subject_id=row.subject.id) }}">
+        <div>
+            <div class="subject-name">{{ row.subject.name }}
+                <span style="font-weight:400;color:#6b7280;">({{ row.subject.code }})</span>
+            </div>
+            <div class="subject-sub">ครูผู้สอน: {{ row.subject.teacher_names() }}</div>
+            <div class="status-chips">
+                {% for key in ['late_closed', 'late_accepting', 'due_soon', 'not_submitted', 'submitted'] %}
+                    {% if row.counts[key] > 0 %}
+                    <span class="chip chip-{{ 'gray' if key == 'late_closed' else status_color(key) }}">{{ status_icon(key) }} {{ status_label(key) }}: {{ row.counts[key] }}</span>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        <div style="text-align:right;">
+            {% if row.pending_count > 0 %}
+                <div class="big-count">{{ row.pending_count }}</div>
+                <div style="font-size:0.75rem;color:#6b7280;">งานค้าง</div>
+            {% elif row.counts.late_closed > 0 %}
+                <span class="badge badge-gray">ปิดรับแล้ว {{ row.counts.late_closed }} งาน</span>
+            {% else %}
+                <span class="badge badge-green">✅ ไม่มีงานค้าง</span>
+            {% endif %}
+        </div>
+    </a>
+{% else %}
+    <p>ยังไม่มีรายวิชาที่ลงทะเบียน</p>
+{% endfor %}
+
+{% endblock %}

@@ -1,0 +1,565 @@
+{% extends "base.html" %}
+{% block title %}{{ subject.name }} — จัดการงาน{% endblock %}
+{% block content %}
+
+<a class="back-link" href="{{ url_for('teacher_dashboard') }}">&larr; กลับหน้าหลัก</a>
+
+<h2>{{ subject.name }} <span style="color:#6b7280;font-weight:400;">({{ subject.code }})</span></h2>
+<p style="color:#6b7280;">
+    นักเรียน {{ students|length }} คน · งาน {{ assignments|length }} ชิ้น · ครูผู้สอน: {{ subject.teacher_names() }}{% if subject.is_elective %} · <span class="badge badge-green">วิชาเสริม</span>{% endif %}
+</p>
+
+{% if subject.uses_classes() %}
+<details class="section-toggle" id="studentManager">
+<summary class="section-title">👥 นักเรียนในวิชา ({{ students|length }} คน)</summary>
+<div class="card">
+    <p class="form-hint" style="margin-top:0;">
+        วิชานี้สอน <strong>{{ subject.class_labels() }}</strong> — นักเรียนทุกคนในห้องเหล่านี้ได้รับงานของวิชานี้อัตโนมัติ
+        ไม่ต้องเลือกนักเรียนเอง และถ้ามีนักเรียนเข้า/ย้ายห้อง รายชื่อจะปรับให้เองทันที
+        (เปลี่ยนชั้น/ห้องได้ที่หน้าหลัก → จัดการรายวิชา → แก้ไขข้อมูลวิชา)
+    </p>
+    {% if students %}
+    <div style="max-height:260px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px;">
+        <table>
+            <thead><tr><th>เลขที่</th><th>เลขประจำตัว</th><th>ชื่อ-นามสกุล</th><th>ชั้น/ห้อง</th></tr></thead>
+            <tbody>
+            {% for st in students %}
+            <tr><td>{{ st.roll_number if st.roll_number is not none else '-' }}</td><td>{{ st.student_id }}</td><td>{{ st.name }}</td><td>{{ st.full_class_label() }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="form-hint">ยังไม่มีนักเรียนในห้องนี้ในขณะนี้</p>
+    {% endif %}
+</div>
+</details>
+{% else %}
+<details class="section-toggle" id="studentManager" {% if not students %}open{% endif %}>
+<summary class="section-title">👥 นักเรียนในวิชา ({{ students|length }} คน)</summary>
+<div class="card">
+    {% if subject.is_elective %}
+    <p class="form-hint">วิชาเสริมนี้แอดมินกำหนดครูผู้สอนไว้แล้ว — ครูผู้สอนทุกคนของวิชาเพิ่ม/นำนักเรียนออกได้ และเห็นรายชื่อเดียวกัน</p>
+    {% endif %}
+
+    <h3>รายชื่อนักเรียนปัจจุบัน</h3>
+    {% if students %}
+    <form method="POST" action="{{ url_for('teacher_unenroll_students', subject_id=subject.id) }}"
+          data-confirm="นำนักเรียนที่เลือกออกจากวิชา? สถานะการส่งงานของนักเรียนเหล่านี้ในวิชานี้จะถูกลบด้วย">
+        <div style="max-height:260px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px;">
+            <table>
+                <thead><tr><th style="width:36px;"><input type="checkbox" style="width:auto;" onchange="document.querySelectorAll('.rm-student').forEach(c=>c.checked=this.checked)"></th><th>เลขประจำตัว</th><th>ชื่อ-นามสกุล</th><th>ชั้น/ห้อง</th></tr></thead>
+                <tbody>
+                {% for st in students %}
+                <tr>
+                    <td><input type="checkbox" class="rm-student" name="student_ids" value="{{ st.id }}" style="width:auto;"></td>
+                    <td>{{ st.student_id }}</td><td>{{ st.name }}</td><td>{{ st.full_class_label() }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <button type="submit" class="btn-danger" style="margin-top:8px;">นำนักเรียนที่เลือกออกจากวิชา</button>
+    </form>
+    {% else %}
+    <p class="form-hint">ยังไม่มีนักเรียนในวิชานี้ — เพิ่มนักเรียนด้านล่างได้เลย</p>
+    {% endif %}
+
+    <h3 style="margin-top:22px;">เพิ่มนักเรียนทั้งห้อง</h3>
+    <form method="POST" action="{{ url_for('teacher_enroll_class', subject_id=subject.id) }}" class="deadline-fields">
+        <div>
+            <label for="clsGrade">ระดับชั้น</label>
+            <select name="grade_level" id="clsGrade" required>
+                <option value="" disabled selected>เลือกชั้น</option>
+                {% for g in grade_levels %}<option value="{{ g }}">{{ g }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="clsRoom">ห้อง</label>
+            <select name="class_room" id="clsRoom" required>
+                <option value="" disabled selected>เลือกห้อง</option>
+                {% for r in sections %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+            </select>
+        </div>
+        <div style="align-self:end;"><button type="submit">เพิ่มทั้งห้อง</button></div>
+    </form>
+
+    <h3 style="margin-top:22px;">เพิ่มนักเรียนรายคน</h3>
+    <p class="form-hint" style="margin-top:0;">เลือกได้หลายชั้น/หลายห้อง — เปลี่ยนตัวกรองชั้นหรือห้องได้ตามสบาย นักเรียนที่ติ๊กไว้แล้วจะยังอยู่ครบ ไม่ต้องเลือกใหม่</p>
+    <form method="POST" action="{{ url_for('teacher_enroll_students', subject_id=subject.id) }}">
+        <div class="deadline-fields">
+            <div>
+                <label for="addGrade">ชั้น</label>
+                <select id="addGrade" onchange="filterAddStudents()">
+                    <option value="">ทุกชั้น</option>
+                    {% for g in grade_levels %}<option value="{{ g }}">{{ g }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="addRoom">ห้อง</label>
+                <select id="addRoom" onchange="filterAddStudents()">
+                    <option value="">ทุกห้อง</option>
+                    {% for r in sections %}<option value="{{ r }}">ห้อง {{ r }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="addSearch">ค้นหา</label>
+                <input id="addSearch" type="search" placeholder="ชื่อหรือเลขประจำตัว" oninput="filterAddStudents()">
+            </div>
+        </div>
+        <label class="checkbox-line" style="margin-top:8px;">
+            <input type="checkbox" id="addSelectAll" style="width:auto;" onchange="toggleAddVisible(this)">
+            เลือกทั้งหมดที่แสดงอยู่ (<span id="addShownCount">{{ available_students|length }}</span> คน)
+        </label>
+        <div id="addStudentList" style="max-height:280px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px;padding:6px 10px;">
+            {% for st in available_students %}
+            <label class="add-student-row" style="display:block;font-size:0.9rem;padding:3px 0;"
+                   data-grade="{{ st.grade_level }}" data-room="{{ st.class_room or '' }}"
+                   data-name="{{ st.name }}" data-class="{{ st.full_class_label() }}"
+                   data-text="{{ (st.name ~ ' ' ~ st.student_id)|lower }}">
+                <input type="checkbox" name="student_ids" value="{{ st.id }}" style="width:auto;">
+                {{ st.name }} ({{ st.student_id }}) — {{ st.full_class_label() }}
+            </label>
+            {% else %}
+            <p class="form-hint">นักเรียนทุกคนอยู่ในวิชานี้แล้ว</p>
+            {% endfor %}
+            <p id="addNoMatch" class="form-hint" style="display:none;">ไม่พบนักเรียนที่ตรงกับตัวกรอง</p>
+        </div>
+
+        <div id="addSelectedBox" style="margin-top:10px;padding:10px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                <strong>เลือกไว้แล้ว <span id="addSelectedCount">0</span> คน</strong>
+                <button type="button" id="addClearBtn" onclick="clearAddSelection()"
+                        style="width:auto;margin:0;padding:4px 12px;font-size:0.8rem;background:#fff;color:#b91c1c;border:1px solid #fca5a5;">ล้างที่เลือก</button>
+            </div>
+            <div id="addSelectedChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;"></div>
+        </div>
+        <button type="submit" id="addSubmitBtn" style="margin-top:10px;">เพิ่มนักเรียนที่เลือก</button>
+    </form>
+</div>
+</details>
+
+{% endif %}
+
+{% if not subject.uses_classes() %}
+<script>
+// เก็บการเลือกไว้ที่ checkbox ของแต่ละแถว (อยู่ในฟอร์มเดียวกันเสมอ) — การกรองชั้น/ห้อง/ค้นหาเพียงซ่อนแถว
+// นักเรียนที่ติ๊กไว้จึงไม่หายและถูกส่งไปพร้อมกันทั้งหมดตอนกดเพิ่ม
+const addRows = () => [...document.querySelectorAll('.add-student-row')];
+function filterAddStudents() {
+    const grade = document.getElementById('addGrade').value;
+    const room = document.getElementById('addRoom').value;
+    const q = document.getElementById('addSearch').value.trim().toLowerCase();
+    let shown = 0;
+    addRows().forEach(row => {
+        const ok = (!grade || row.dataset.grade === grade) && (!room || row.dataset.room === room)
+                   && (!q || row.dataset.text.includes(q));
+        row.style.display = ok ? 'block' : 'none';
+        if (ok) shown++;
+    });
+    document.getElementById('addShownCount').textContent = shown;
+    const nm = document.getElementById('addNoMatch');
+    if (nm) nm.style.display = (addRows().length && !shown) ? 'block' : 'none';
+    updateAddSelection();
+}
+function toggleAddVisible(box) {
+    addRows().forEach(row => {
+        if (row.style.display !== 'none') row.querySelector('input').checked = box.checked;
+    });
+    updateAddSelection();
+}
+function clearAddSelection() {
+    addRows().forEach(row => row.querySelector('input').checked = false);
+    updateAddSelection();
+}
+function updateAddSelection() {
+    const chosen = addRows().filter(r => r.querySelector('input').checked);
+    document.getElementById('addSelectedCount').textContent = chosen.length;
+    document.getElementById('addSubmitBtn').textContent =
+        chosen.length ? 'เพิ่มนักเรียนที่เลือก (' + chosen.length + ' คน)' : 'เพิ่มนักเรียนที่เลือก';
+    document.getElementById('addSelectedBox').style.opacity = chosen.length ? '1' : '0.6';
+    document.getElementById('addClearBtn').style.display = chosen.length ? '' : 'none';
+    const chips = document.getElementById('addSelectedChips');
+    chips.innerHTML = '';
+    chosen.forEach(row => {
+        const chip = document.createElement('span');
+        chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #86efac;border-radius:999px;padding:3px 6px 3px 10px;font-size:0.82rem;';
+        chip.appendChild(document.createTextNode(row.dataset.name + ' · ' + row.dataset.class));
+        const x = document.createElement('button');
+        x.type = 'button'; x.textContent = '✕'; x.title = 'เอาออกจากที่เลือก';
+        x.style.cssText = 'width:auto;margin:0;padding:0 6px;background:none;color:#b91c1c;border:none;cursor:pointer;font-size:0.9rem;';
+        x.onclick = () => { row.querySelector('input').checked = false; updateAddSelection(); };
+        chip.appendChild(x);
+        chips.appendChild(chip);
+    });
+    const visible = addRows().filter(r => r.style.display !== 'none');
+    document.getElementById('addSelectAll').checked =
+        visible.length > 0 && visible.every(r => r.querySelector('input').checked);
+}
+document.getElementById('addStudentList').addEventListener('change', updateAddSelection);
+updateAddSelection();
+</script>
+{% endif %}
+
+<details class="section-toggle">
+<summary class="section-title">➕ สั่งงานใหม่</summary>
+<div class="card">
+    <form method="POST" action="{{ url_for('new_assignment', subject_id=subject.id) }}">
+        <label for="assignmentType">ขั้นตอนที่ 1 · เลือกประเภทงาน</label>
+        <select name="assignment_type" id="assignmentType" required>
+            <option value="" selected disabled>เลือกประเภทงานก่อน</option>
+            {% for val, label in assignment_types %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+        </select>
+
+        <div id="assignmentDetails" hidden>
+        <h3 class="form-step-title">ขั้นตอนที่ 2 · รายละเอียดงาน</h3>
+        <label>ชื่องาน</label>
+        <input type="text" name="title" required placeholder="เช่น แบบฝึกหัดบทที่ 3">
+
+        <label>รายละเอียดงานที่สั่ง (ยิ่งละเอียด นักเรียนยิ่งเข้าใจชัด)</label>
+        <textarea name="description" rows="4" placeholder="อธิบายว่าต้องทำอะไร ส่งอย่างไร ส่งที่ไหน เกณฑ์การให้คะแนน ฯลฯ"></textarea>
+
+        <label>ตัวอย่างงาน / แนวทางการทำ (ถ้ามี)</label>
+        <textarea name="example_text" rows="3" placeholder="เช่น โครงร่างรายงาน หรือตัวอย่างการเขียนวิธีทำ"></textarea>
+
+        <label>🔗 ลิงก์แนบ (ใบงาน / ฟอร์มส่งงาน / วิดีโอ ฯลฯ)</label>
+        <input type="url" name="link_url" placeholder="https://...">
+        <label>ข้อความแสดงแทนลิงก์</label>
+        <input type="text" name="link_label" placeholder="เช่น ฟอร์มส่งงาน (Google Form)">
+
+        <label>กำหนดส่ง</label>
+        <div class="deadline-fields">
+            <div>
+                <label for="newDueDay">วันที่ (วัน/เดือน/ปี ค.ศ.)</label>
+                <input type="text" id="newDueDay" name="due_date_day" inputmode="numeric"
+                       placeholder="เช่น 14/10/2026" pattern="(?:0[1-9]|[12][0-9]|3[01])/(?:0[1-9]|1[0-2])/[0-9]{4}"
+                       title="กรอกวันที่ วัน/เดือน/ปี ค.ศ. เช่น 14/10/2026" maxlength="10" required>
+            </div>
+            <div>
+                <label for="newDueTime">เวลาไทย (24 ชั่วโมง)</label>
+                <input type="text" id="newDueTime" name="due_time_hm" inputmode="numeric"
+                       placeholder="14:30" pattern="(?:[01][0-9]|2[0-3]):[0-5][0-9]"
+                       title="กรอกเวลา 00:00–23:59 เช่น 14:30" required>
+            </div>
+        </div>
+
+        <div id="groupOptions" class="group-options" hidden>
+            <h3 class="form-step-title">ขั้นตอนที่ 3 · จัดกลุ่มนักเรียน</h3>
+            <label class="checkbox-line">
+                <input type="radio" name="group_method" value="random" checked disabled>
+                🎲 สุ่มสมาชิกอัตโนมัติ
+            </label>
+            <label class="checkbox-line">
+                <input type="radio" name="group_method" value="manual" disabled>
+                ✍️ กำหนดสมาชิกเอง
+            </label>
+            <div id="randomGroupFields">
+                <label for="newGroupSize">จำนวนคนต่อกลุ่ม</label>
+                <input type="number" id="newGroupSize" name="group_size" min="1" placeholder="เช่น 4" disabled>
+            </div>
+            <div id="manualGroupFields" hidden>
+                {% if students %}
+                <label for="newGroupCount">จำนวนกลุ่ม</label>
+                <input type="number" id="newGroupCount" name="group_count" min="1" max="{{ students|length }}"
+                       placeholder="เช่น 5 (ไม่เกิน {{ students|length }})" inputmode="numeric" disabled>
+                <p class="form-hint">เลือกจำนวนกลุ่มก่อน แล้วติ๊กช่องว่านักเรียนแต่ละคนอยู่กลุ่มไหน (เรียงตามเลขที่) — กดที่ช่องได้เลย</p>
+                <div id="manualMemberArea" hidden>
+                    <div id="groupSummary" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px;"></div>
+                    <div class="group-member-table" style="overflow-x:auto;">
+                        <table class="group-grid">
+                            <thead><tr id="groupGridHead"><th style="width:70px;">เลขที่</th><th>นักเรียน</th></tr></thead>
+                            <tbody>
+                            {% for st in students %}
+                            <tr data-sid="{{ st.id }}">
+                                <td>{{ st.roll_number if st.roll_number is not none else '-' }}</td>
+                                <td>{{ st.name }}</td>
+                            </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            {% if not students %}<p class="form-hint">ยังไม่มีนักเรียนในวิชานี้ โปรดเพิ่มนักเรียนก่อนสั่งงานกลุ่ม</p>{% endif %}
+        </div>
+
+        <label style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;">
+            <input type="checkbox" name="accept_late" style="width:auto;" checked>
+            เลยกำหนดแล้วยังรับงานอยู่ (ถ้าไม่ติ๊ก = ปิดรับทันทีเมื่อเลยกำหนด)
+        </label>
+
+        <button type="submit" style="margin-top:16px;display:block;">สั่งงาน</button>
+        </div>
+    </form>
+</div>
+</details>
+
+<script>
+(function () {
+    const type = document.getElementById('assignmentType');
+    const details = document.getElementById('assignmentDetails');
+    const groupOptions = document.getElementById('groupOptions');
+    const groupSize = document.getElementById('newGroupSize');
+    const methods = Array.from(document.querySelectorAll('input[name="group_method"]'));
+    const randomFields = document.getElementById('randomGroupFields');
+    const manualFields = document.getElementById('manualGroupFields');
+    const manualCount = document.getElementById('newGroupCount');
+    const manualArea = document.getElementById('manualMemberArea');
+    const groupSummary = document.getElementById('groupSummary');
+    const gridHead = document.getElementById('groupGridHead');
+    const gridRows = Array.from(manualFields.querySelectorAll('tbody tr[data-sid]'));
+    const choice = {};          // รหัสนักเรียน -> หมายเลขกลุ่มที่ติ๊กไว้ (1 คนอยู่ได้กลุ่มเดียว)
+    let manualActive = false;
+
+    function groupTotal() {
+        if (!manualCount) return 0;
+        const max = parseInt(manualCount.max) || 0;
+        return Math.max(0, Math.min(parseInt(manualCount.value) || 0, max));
+    }
+    function renderGrid() {
+        if (!manualCount) return;
+        const n = groupTotal();
+        manualArea.hidden = n < 1;
+        Object.keys(choice).forEach(k => { if (choice[k] > n) delete choice[k]; });   // กลุ่มที่ถูกลดออก
+        gridHead.querySelectorAll('th.gh').forEach(x => x.remove());
+        for (let g = 1; g <= n; g++) {
+            const th = document.createElement('th');
+            th.className = 'gh'; th.textContent = 'กลุ่ม ' + g;
+            gridHead.appendChild(th);
+        }
+        gridRows.forEach(tr => {
+            tr.querySelectorAll('td.gc').forEach(x => x.remove());
+            const sid = tr.dataset.sid;
+            for (let g = 1; g <= n; g++) {
+                const td = document.createElement('td');
+                td.className = 'gc';
+                const label = document.createElement('label');
+                label.className = 'gpick';
+                const box = document.createElement('input');
+                box.type = 'checkbox'; box.name = 'group_' + sid; box.value = g;
+                box.checked = choice[sid] === g;
+                box.disabled = !manualActive;
+                box.setAttribute('aria-label', 'กลุ่ม ' + g);
+                box.addEventListener('change', () => pickGroup(sid, g, box.checked));
+                label.appendChild(box); td.appendChild(label); tr.appendChild(td);
+            }
+        });
+        updateGroupSummary();
+    }
+    function pickGroup(sid, g, on) {
+        if (on) choice[sid] = g; else delete choice[sid];
+        const tr = gridRows.find(r => r.dataset.sid === sid);
+        tr.querySelectorAll('input').forEach(i => i.checked = (choice[sid] === parseInt(i.value)));  // ติ๊กได้ทีละกลุ่มต่อคน
+        updateGroupSummary();
+    }
+    function unassignedCount() {
+        return gridRows.filter(tr => !choice[tr.dataset.sid]).length;
+    }
+    function updateGroupSummary() {
+        if (!manualCount) return;
+        const n = groupTotal();
+        const counts = {};
+        Object.values(choice).forEach(g => counts[g] = (counts[g] || 0) + 1);
+        const unassigned = unassignedCount();
+        groupSummary.innerHTML = '';
+        const chip = (text, warn) => {
+            const c = document.createElement('span');
+            c.textContent = text;
+            c.style.cssText = 'padding:3px 10px;border-radius:999px;font-size:0.82rem;border:1px solid ' +
+                (warn ? '#fca5a5;background:#fef2f2;color:#b91c1c;' : '#bfdbfe;background:#fff;color:#1e3a8a;');
+            groupSummary.appendChild(c);
+        };
+        for (let g = 1; g <= n; g++) chip('กลุ่ม ' + g + ': ' + (counts[g] || 0) + ' คน', !counts[g]);
+        if (unassigned) chip('ยังไม่ได้เลือกกลุ่ม ' + unassigned + ' คน', true);
+    }
+    function updateAssignmentForm() {
+        const isGroup = type.value === 'group';
+        const isManual = isGroup && methods.find(method => method.checked).value === 'manual';
+        manualActive = isManual;
+        details.hidden = !type.value;
+        groupOptions.hidden = !isGroup;
+        methods.forEach(method => method.disabled = !isGroup);
+        randomFields.hidden = !isGroup || isManual;
+        manualFields.hidden = !isManual;
+        groupSize.disabled = !isGroup || isManual;
+        groupSize.required = isGroup && !isManual;
+        if (manualCount) {
+            manualCount.disabled = !isManual;
+            manualCount.required = isManual;
+        }
+        manualFields.querySelectorAll('td.gc input').forEach(i => i.disabled = !isManual);
+        renderGrid();
+    }
+    if (manualCount) manualCount.addEventListener('input', renderGrid);
+    // กันกดสั่งงานทั้งที่ยังมีนักเรียนที่ไม่ได้ติ๊กกลุ่ม
+    type.closest('form').addEventListener('submit', e => {
+        if (!manualActive || !manualCount) return;
+        const un = unassignedCount();
+        if (un > 0) {
+            e.preventDefault();
+            uiAlert('ยังไม่ได้เลือกกลุ่มให้นักเรียน ' + un + ' คน — ติ๊กกลุ่มให้ครบทุกคนก่อนสั่งงาน');
+            manualArea.scrollIntoView({behavior: 'smooth', block: 'start'});
+        }
+    });
+    type.addEventListener('change', updateAssignmentForm);
+    methods.forEach(method => method.addEventListener('change', updateAssignmentForm));
+    updateAssignmentForm();
+})();
+</script>
+
+<details class="section-toggle" open>
+<summary class="section-title">📋 งานทั้งหมด ({{ assignments|length }} ชิ้น)</summary>
+{% for a in assignments %}
+<div class="card assignment-manage">
+    <div class="assignment-head">
+        <div>
+            <a href="{{ url_for('teacher_assignment', assignment_id=a.id) }}" class="assignment-title">{{ a.title }}</a>
+            <span class="badge badge-gray">{{ a.type_label() }}</span>
+            {% if a.is_overdue() %}
+                {% if a.accept_late %}
+                <span class="badge badge-orange">⚠️ เลยกำหนด · ยังรับอยู่</span>
+                {% else %}
+                <span class="badge badge-red">⛔ เลยกำหนด · ปิดรับแล้ว</span>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+    <div class="due-line">📅 กำหนดส่ง: {{ a.due_date.strftime('%d/%m/%Y %H:%M') }}</div>
+    {% if a.description %}<div class="desc-box">{{ a.description }}</div>{% endif %}
+    {% if a.link_url %}
+    <a href="{{ a.link_url }}" target="_blank" rel="noopener" class="link-chip">🔗 {{ a.link_label or a.link_url }}</a>
+    {% endif %}
+
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+        <a href="{{ url_for('teacher_assignment', assignment_id=a.id) }}" class="btn btn-secondary">ดูรายชื่อ</a>
+        <form method="POST" action="{{ url_for('toggle_accept_late', assignment_id=a.id) }}">
+            <button type="submit" class="btn-secondary">
+                {% if a.accept_late %}⛔ ปิดรับงานสาย{% else %}📥 เปิดรับงานสาย{% endif %}
+            </button>
+        </form>
+    </div>
+
+    <details style="margin-top:10px;">
+        <summary style="cursor:pointer;color:#2563eb;font-size:0.9rem;">แก้ไข / ลบงานนี้</summary>
+        <form method="POST" action="{{ url_for('edit_assignment', assignment_id=a.id) }}" style="margin-top:10px;">
+            <label>ชื่องาน</label>
+            <input type="text" name="title" value="{{ a.title }}" required>
+            <label>รายละเอียดงาน</label>
+            <textarea name="description" rows="4">{{ a.description }}</textarea>
+            <label>ตัวอย่างงาน</label>
+            <textarea name="example_text" rows="3">{{ a.example_text }}</textarea>
+            <label>🔗 ลิงก์แนบ</label>
+            <input type="url" name="link_url" value="{{ a.link_url }}" placeholder="https://...">
+            <label>ข้อความแสดงแทนลิงก์</label>
+            <input type="text" name="link_label" value="{{ a.link_label }}">
+            <label>กำหนดส่ง</label>
+            <div class="deadline-fields">
+                <div>
+                    <label for="dueDay{{ a.id }}">วันที่ (วัน/เดือน/ปี ค.ศ.)</label>
+                    <input type="text" id="dueDay{{ a.id }}" name="due_date_day" inputmode="numeric"
+                           placeholder="เช่น 14/10/2026" pattern="(?:0[1-9]|[12][0-9]|3[01])/(?:0[1-9]|1[0-2])/[0-9]{4}"
+                           title="กรอกวันที่ วัน/เดือน/ปี ค.ศ. เช่น 14/10/2026" maxlength="10"
+                           value="{{ a.due_date.strftime('%d/%m/%Y') }}" required>
+                </div>
+                <div>
+                    <label for="dueTime{{ a.id }}">เวลาไทย (24 ชั่วโมง)</label>
+                    <input type="text" id="dueTime{{ a.id }}" name="due_time_hm" inputmode="numeric"
+                           value="{{ a.due_date.strftime('%H:%M') }}" placeholder="14:30"
+                           pattern="(?:[01][0-9]|2[0-3]):[0-5][0-9]"
+                           title="กรอกเวลา 00:00–23:59 เช่น 14:30" required>
+                </div>
+            </div>
+            {% if a.assignment_type == 'group' %}
+            <label>จำนวนคนต่อกลุ่ม</label>
+            <input type="number" name="group_size" value="{{ a.group_size or '' }}" min="1">
+            {% endif %}
+            <label style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;">
+                <input type="checkbox" name="accept_late" style="width:auto;" {% if a.accept_late %}checked{% endif %}>
+                เลยกำหนดแล้วยังรับงานอยู่
+            </label>
+            <button type="submit" style="margin-top:10px;display:block;">บันทึกการแก้ไข</button>
+        </form>
+        <form method="POST" action="{{ url_for('delete_assignment', assignment_id=a.id) }}"
+              data-confirm="ลบงานนี้? สถานะการส่งของนักเรียนทุกคนจะถูกลบด้วย" style="margin-top:8px;">
+            <button type="submit" class="btn-danger">ลบงานนี้</button>
+        </form>
+    </details>
+</div>
+{% else %}
+<p>ยังไม่มีงานในวิชานี้ กด "สั่งงานใหม่" ด้านบนเพื่อเริ่มต้น</p>
+{% endfor %}
+</details>
+
+<details class="section-toggle" open>
+<summary class="section-title">✅ เช็คสถานะการส่งงาน (ทุกคน ทุกชิ้น)</summary>
+{% if students and assignments %}
+<div class="card" style="overflow-x:auto;">
+    <form method="POST" action="{{ url_for('update_status', subject_id=subject.id) }}" id="statusForm">
+        <input type="hidden" name="row_all_marker" value="1">
+        <p class="form-hint" style="margin:0 0 10px;">
+            นักเรียนที่ส่งงานครบทุกชิ้นแล้วจะแสดงเป็นสีเขียวและอยู่ล่างสุดของตาราง
+            (ส่งครบแล้ว <strong id="doneCount">{{ done_ids|length }}</strong> จาก {{ students|length }} คน — ลำดับจะจัดใหม่หลังกดบันทึก)
+        </p>
+        <table class="status-grid">
+            <thead>
+                <tr>
+                    <th>นักเรียน</th>
+                    {% for a in assignments %}
+                    <th>{{ a.title }}<br>
+                        <span style="font-weight:400;color:#6b7280;font-size:0.75rem;">
+                            {{ a.due_date.strftime('%d/%m') }}
+                        </span>
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+            {% for st in status_students %}
+                <tr class="{% if st.id in done_ids %}row-done{% endif %}">
+                    <td><strong>{{ st.name }}</strong>
+                        <span class="done-badge">✅ ส่งครบแล้ว</span><br>
+                        <span style="color:#6b7280;font-size:0.78rem;">{{ st.student_id }} · {{ st.full_class_label() }}</span>
+                    </td>
+                    {% for a in assignments %}
+                        {% set cell = status_table[st.id][a.id] %}
+                        <td class="cell-{{ status_color(cell.status) }} pick-cell">
+                            <label class="pick-label">
+                                <input type="checkbox" name="submitted_{{ a.id }}_{{ st.id }}"
+                                       {% if cell.submission and cell.submission.submitted %}checked{% endif %}>
+                                <span>ส่งแล้ว</span>
+                            </label>
+                        </td>
+                    {% endfor %}
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <button type="submit" style="margin-top:16px;">บันทึกสถานะทั้งหมด</button>
+    </form>
+    <script>
+    // ไฮไลต์แถวเป็นสีเขียวทันทีเมื่อติ๊กครบทุกชิ้น (การเรียงไปล่างสุดเกิดหลังกดบันทึก)
+    (function () {
+        const form = document.getElementById('statusForm');
+        function refresh() {
+            let n = 0;
+            form.querySelectorAll('tbody tr').forEach(tr => {
+                const boxes = tr.querySelectorAll('input[type=checkbox]');
+                const done = boxes.length > 0 && [...boxes].every(b => b.checked);
+                tr.classList.toggle('row-done', done);
+                if (done) n++;
+            });
+            document.getElementById('doneCount').textContent = n;
+        }
+        form.addEventListener('change', refresh);
+    })();
+    </script>
+</div>
+{% else %}
+<p>ต้องมีทั้งนักเรียนที่ลงทะเบียนและงานอย่างน้อย 1 ชิ้น จึงจะเช็คสถานะได้</p>
+{% endif %}
+</details>
+
+{% endblock %}

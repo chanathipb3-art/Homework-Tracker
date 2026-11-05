@@ -1,0 +1,8 @@
+<div class="period-now-item">
+    <div class="period-now-label">📍 {{ "คาบตอนนี้" if session.get('role') == 'student' else "คาบปัจจุบัน" }}</div>
+    <div class="period-now-value {{ period_box.current[1] }}">{{ period_box.current[0] }}</div>
+</div>
+<div class="period-now-item">
+    <div class="period-now-label">⏭️ คาบต่อไป</div>
+    <div class="period-now-value {{ period_box.next[1] }}">{{ period_box.next[0] }}</div>
+</div>

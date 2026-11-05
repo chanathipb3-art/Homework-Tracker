@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}{{ assignment.title }}{% endblock %}
+{% block content %}
+
+<a class="back-link" href="{{ back_url }}">&larr; กลับ</a>
+
+<div class="detail-hero border-{{ status_color(status) }}">
+    <div class="assignment-head">
+        <h2 style="margin:0;">{{ assignment.title }}</h2>
+        <span class="badge badge-{{ status_color(status) }} badge-lg">{{ status_icon(status) }} {{ status_label(status) }}</span>
+    </div>
+    <p style="color:#6b7280;margin:6px 0 0;">
+        วิชา {{ assignment.subject.name }} · {{ assignment.type_label() }}
+        {% if group_label %} · 👥 {{ group_label }}{% endif %}
+    </p>
+</div>
+
+<div class="detail-grid">
+    <div class="detail-item">
+        <div class="detail-label">📅 กำหนดส่ง</div>
+        <div class="detail-value">{{ assignment.due_date.strftime('%d/%m/%Y') }}<br>
+            <span style="font-size:0.9rem;color:#6b7280;">เวลา {{ assignment.due_date.strftime('%H:%M') }} น.</span>
+        </div>
+    </div>
+    <div class="detail-item">
+        <div class="detail-label">⏱️ เวลาที่เหลือ</div>
+        <div class="detail-value">
+            <span class="due-countdown{% if assignment.is_overdue() %} is-overdue{% endif %}" data-due-at="{{ assignment.due_date.strftime('%Y-%m-%dT%H:%M:%S+07:00') }}" data-layout="detail">{% if assignment.is_overdue() %}เลยกำหนดแล้ว{% else %}เหลืออีก<br>{{ format_due_countdown(assignment.due_date) }}{% endif %}</span>
+        </div>
+    </div>
+    <div class="detail-item">
+        <div class="detail-label">📥 การรับงาน</div>
+        <div class="detail-value">
+            {% if assignment.accept_late %}
+                <span style="color:#d97706;">ยังรับงานสายอยู่</span>
+            {% else %}
+                <span style="color:#dc2626;">ไม่รับงานสาย</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% if assignment.link_url %}
+<div class="link-panel">
+    <div class="detail-label" style="margin-bottom:8px;">🔗 ลิงก์แนบสำหรับงานนี้</div>
+    <a href="{{ assignment.link_url }}" target="_blank" rel="noopener" class="link-big">
+        {{ assignment.link_label or assignment.link_url }}
+    </a>
+    <div class="link-url">{{ assignment.link_url }}</div>
+    <a href="{{ assignment.link_url }}" target="_blank" rel="noopener" class="btn" style="margin-top:10px;">
+        เปิดลิงก์ในแท็บใหม่ &rarr;
+    </a>
+</div>
+{% endif %}
+
+<details class="section-toggle" open>
+<summary class="section-title">📝 รายละเอียดงานที่สั่ง</summary>
+<div class="card">
+    {% if assignment.description %}
+    <div class="desc-box big">{{ assignment.description }}</div>
+    {% else %}
+    <p style="color:#6b7280;">ครูยังไม่ได้ระบุรายละเอียดเพิ่มเติมสำหรับงานชิ้นนี้</p>
+    {% endif %}
+</div>
+</details>
+
+{% if assignment.example_text %}
+<details class="section-toggle" open>
+<summary class="section-title">💡 ตัวอย่างงาน / แนวทางการทำ</summary>
+<div class="card">
+    <div class="desc-box big example">{{ assignment.example_text }}</div>
+</div>
+</details>
+{% endif %}
+
+{% if group_members %}
+<details class="section-toggle" open>
+<summary class="section-title">👥 สมาชิกในกลุ่มของคุณ</summary>
+<div class="card">
+    <ul style="margin:0;padding-left:20px;">
+        {% for m in group_members %}<li>{{ m }}</li>{% endfor %}
+    </ul>
+</div>
+</details>
+{% endif %}
+
+{% if note %}
+<div class="card" style="border-left:4px solid var(--blue);">
+    <div class="detail-label">💬 หมายเหตุจากครู</div>
+    <p style="margin:6px 0 0;">{{ note }}</p>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}{{ subject.name }}{% endblock %}
+{% block content %}
+
+<a class="back-link" href="{{ url_for('student_dashboard') }}">&larr; กลับหน้าหลัก</a>
+
+<h2>{{ subject.name }} <span style="color:#6b7280;font-weight:400;">({{ subject.code }})</span></h2>
+<p style="color:#6b7280;">ครูผู้สอน: {{ subject.teacher_names() }}{% if subject.room %} · ห้อง {{ subject.room }}{% endif %}</p>
+
+<div class="status-summary">
+    <div class="summary-box summary-blue"><div class="summary-num">{{ assignment_rows|length }}</div><div class="summary-label">งานทั้งหมด</div></div>
+    <div class="summary-box summary-green"><div class="summary-num">{{ counts.submitted }}</div><div class="summary-label">ส่งแล้ว</div></div>
+    <div class="summary-box summary-yellow"><div class="summary-num">{{ assignment_rows|length - counts.submitted }}</div><div class="summary-label">ยังไม่ส่ง</div></div>
+</div>
+
+{% macro assignment_card(row) %}
+{% set a = row.assignment %}
+<div class="assignment-card border-{{ status_color(row.status) }}" id="assignment-{{ a.id }}">
+    <div class="assignment-head">
+        <div>
+            <strong class="student-assignment-title">{{ a.title }}</strong>
+            <span class="badge badge-gray">{{ a.type_label() }}</span>
+        </div>
+        <span class="badge badge-{{ status_color(row.status) }}">{{ status_icon(row.status) }} {{ status_label(row.status) }}</span>
+    </div>
+
+    <div class="due-line">
+        📅 กำหนดส่ง: <strong>{{ a.due_date.strftime('%d/%m/%Y เวลา %H:%M') }}</strong>
+        <span class="due-countdown{% if a.is_overdue() %} is-overdue{% endif %}"
+              data-due-at="{{ a.due_date.strftime('%Y-%m-%dT%H:%M:%S+07:00') }}">{% if a.is_overdue() %}(เลยกำหนดแล้ว){% else %}(เหลืออีก {{ format_due_countdown(a.due_date) }}){% endif %}</span>
+    </div>
+    <div class="student-card-meta">
+        📥 {% if a.is_overdue() and not a.accept_late %}ปิดรับแล้ว{% elif a.is_overdue() %}ยังรับงานสาย{% else %}ยังรับงานอยู่{% endif %}
+        {% if row.group_label %} · 👥 {{ row.group_label }}{% endif %}
+    </div>
+
+    {% if a.description %}
+    <div class="student-card-section">
+        <div class="detail-label">📝 รายละเอียดงานที่สั่ง</div>
+        <div class="desc-box">{{ a.description }}</div>
+    </div>
+    {% endif %}
+
+    {% if a.example_text %}
+    <div class="student-card-section">
+        <div class="detail-label">💡 ตัวอย่างงาน / แนวทางการทำ</div>
+        {% if row.example_url %}
+        <a href="{{ row.example_url }}" target="_blank" rel="noopener noreferrer" class="link-chip">🔗 เปิดลิงก์ตัวอย่างงาน</a>
+        {% else %}
+        <div class="desc-box example">{{ a.example_text }}</div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if a.link_url %}
+    <div class="student-card-section">
+        <div class="detail-label">🔗 ลิงก์แนบสำหรับงานนี้</div>
+        <a href="{{ a.link_url }}" target="_blank" rel="noopener noreferrer" class="link-chip">{{ a.link_label or 'เปิดลิงก์แนบ' }}</a>
+    </div>
+    {% endif %}
+
+    {% if row.group_members %}
+    <div class="student-card-section">
+        <div class="detail-label">👥 สมาชิกในกลุ่มของคุณ</div>
+        <div class="student-card-meta">{{ row.group_members|join(', ') }}</div>
+    </div>
+    {% endif %}
+
+    {% if row.note %}
+    <div class="student-card-section">
+        <div class="detail-label">💬 หมายเหตุจากครู</div>
+        <div class="student-card-meta">{{ row.note }}</div>
+    </div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{% if pending_rows %}
+<details class="section-toggle" open>
+<summary class="section-title">🔔 งานที่ต้องจัดการ ({{ pending_rows|length }} ชิ้น)</summary>
+{% for row in pending_rows %}
+    {{ assignment_card(row) }}
+{% endfor %}
+</details>
+{% endif %}
+
+{% if other_rows %}
+<details class="section-toggle" open>
+<summary class="section-title">{{ 'งานอื่น ๆ ในวิชานี้' if pending_rows else 'งานทั้งหมดในวิชานี้' }} ({{ other_rows|length }} ชิ้น)</summary>
+{% for row in other_rows %}
+    {{ assignment_card(row) }}
+{% endfor %}
+</details>
+{% elif not pending_rows %}
+<p>ยังไม่มีงานในวิชานี้</p>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}ระบบติดตามภาระงานค้างของนักเรียน{% endblock %}</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📚%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='ui.js') }}"></script>
+</head>
+<body>
+<header class="topbar">
+    <div class="brand"><span class="brand-logo" aria-hidden="true">📚</span><span>ระบบติดตามภาระงานค้าง</span></div>
+    <div class="user-box">
+        {% if session.get('role') == 'student' %}
+            <span>นักเรียน</span>
+            <a href="{{ url_for('logout') }}" class="btn-link">ออกจากระบบ</a>
+        {% elif session.get('role') == 'teacher' %}
+            <span>ครู</span>
+            {% if session.get('is_admin') %}
+            <a href="{{ url_for('admin_dashboard') }}" class="btn-link">แผงควบคุม</a>
+            {% endif %}
+            <a href="{{ url_for('change_password') }}" class="btn-link">เปลี่ยนรหัสผ่าน</a>
+            <a href="{{ url_for('logout') }}" class="btn-link">ออกจากระบบ</a>
+        {% endif %}
+    </div>
+</header>
+
+<main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, msg in messages %}
+                <div class="flash flash-{{ category }}">{{ msg }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+</main>
+<script src="{{ url_for('static', filename='countdown.js') }}" defer></script>
+</body>
+</html>

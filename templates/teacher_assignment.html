@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}{{ assignment.title }}{% endblock %}
+{% block content %}
+
+<a class="back-link" href="{{ url_for('teacher_subject', subject_id=assignment.subject_id) }}">&larr; กลับไปหน้าวิชา</a>
+
+<div class="detail-hero border-{{ 'orange' if assignment.is_overdue() and assignment.accept_late else ('red' if assignment.is_overdue() else 'blue') }}">
+    <div class="assignment-head">
+        <h2 style="margin:0;">{{ assignment.title }}</h2>
+        <span class="badge badge-gray badge-lg">{{ assignment.type_label() }}</span>
+    </div>
+    <p style="color:#6b7280;margin:6px 0 0;">วิชา {{ assignment.subject.name }}</p>
+</div>
+
+<div class="detail-grid">
+    <div class="detail-item">
+        <div class="detail-label">📅 กำหนดส่ง</div>
+        <div class="detail-value">{{ assignment.due_date.strftime('%d/%m/%Y') }}<br>
+            <span style="font-size:0.9rem;color:#6b7280;">{{ assignment.due_date.strftime('%H:%M') }} น.</span>
+        </div>
+    </div>
+    <div class="detail-item">
+        <div class="detail-label">📥 การรับงาน</div>
+        <div class="detail-value">
+            {% if assignment.accept_late %}
+            <span style="color:#d97706;">ยังรับงานสายอยู่</span>
+            {% else %}
+            <span style="color:#dc2626;">ปิดรับงานสาย</span>
+            {% endif %}
+            <form method="POST" action="{{ url_for('toggle_accept_late', assignment_id=assignment.id) }}" style="margin-top:6px;">
+                <button type="submit" class="btn-secondary" style="font-size:0.78rem;padding:4px 8px;">สลับสถานะ</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% if assignment.link_url %}
+<div class="link-panel">
+    <div class="detail-label" style="margin-bottom:8px;">🔗 ลิงก์แนบ</div>
+    <a href="{{ assignment.link_url }}" target="_blank" rel="noopener" class="link-big">
+        {{ assignment.link_label or assignment.link_url }}
+    </a>
+    <div class="link-url">{{ assignment.link_url }}</div>
+</div>
+{% endif %}
+
+{% if assignment.description %}
+<details class="section-toggle" open>
+<summary class="section-title">📝 รายละเอียดงานที่สั่ง</summary>
+<div class="card"><div class="desc-box big">{{ assignment.description }}</div></div>
+</details>
+{% endif %}
+
+{% if assignment.example_text %}
+<details class="section-toggle">
+<summary class="section-title">💡 ตัวอย่างงาน / แนวทาง</summary>
+<div class="card"><div class="desc-box big example">{{ assignment.example_text }}</div></div>
+</details>
+{% endif %}
+
+{% if group_rows %}
+<details class="section-toggle" open>
+<summary class="section-title">👥 สมาชิกแต่ละกลุ่ม</summary>
+<div class="card" style="overflow-x:auto;">
+    <table>
+        <thead><tr><th>กลุ่ม</th><th>สมาชิก</th><th>สถานะทั้งกลุ่ม</th></tr></thead>
+        <tbody>
+        {% for row in group_rows %}
+        <tr>
+            <td><strong>{{ row.group.label }}</strong></td>
+            <td>{{ row.names|join(', ') }}</td>
+            <td>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <form method="POST" action="{{ url_for('mark_group_submitted', group_id=row.group.id) }}">
+                        <input type="hidden" name="mark_as" value="submitted">
+                        <button type="submit" style="font-size:0.78rem;padding:4px 8px;">✅ ส่งแล้ว</button>
+                    </form>
+                    <form method="POST" action="{{ url_for('mark_group_submitted', group_id=row.group.id) }}">
+                        <input type="hidden" name="mark_as" value="not">
+                        <button type="submit" class="btn-secondary" style="font-size:0.78rem;padding:4px 8px;">ยังไม่ส่ง</button>
+                    </form>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+</details>
+{% endif %}
+
+<details class="section-toggle" open>
+<summary class="section-title">👥 สถานะรายคน (เรียงคนที่ค้างเร่งด่วนขึ้นก่อน)</summary>
+<table>
+    <thead><tr><th>นักเรียน</th><th>ชั้น</th><th>สถานะ</th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+        <tr>
+            <td>{{ row.student.name }}<br><span style="color:#6b7280;font-size:0.78rem;">{{ row.student.student_id }}</span></td>
+            <td>{{ row.student.full_class_label() }}
+                {% if row.group_label %}<br><span style="font-size:0.78rem;color:#6b7280;">{{ row.group_label }}</span>{% endif %}
+            </td>
+            <td><span class="badge badge-{{ status_color(row.status) }}">{{ status_icon(row.status) }} {{ status_label(row.status) }}</span></td>
+        </tr>
+    {% else %}
+        <tr><td colspan="3" style="color:#6b7280;">ยังไม่มีนักเรียนลงทะเบียนวิชานี้</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+<p style="font-size:0.85rem;color:#6b7280;margin-top:10px;">
+    ติ๊กช่อง "ส่งแล้ว" ที่ตารางเช็คสถานะการส่งงานในหน้าวิชา
+</p>
+</details>
+
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}เข้าสู่ระบบ — ระบบติดตามภาระงานค้างของนักเรียน{% endblock %}
+{% block content %}
+<div class="login-wrap">
+    <div class="login-logo" aria-hidden="true">📚</div>
+    <h2 style="text-align:center;margin-top:0;">ระบบติดตามภาระงานค้างของนักเรียน</h2>
+    <p style="text-align:center;color:#6b7280;font-size:0.9rem;margin-top:0;">ติดตามสถานะการส่งงานของนักเรียน</p>
+
+    <div class="tabs">
+        <div class="tab active" onclick="showTab(event,'student')">นักเรียน</div>
+        <div class="tab" onclick="showTab(event,'teacher')">คุณครู/อาจารย์</div>
+    </div>
+
+    <form class="login-form active" id="form-student" method="POST" action="{{ url_for('login_student') }}">
+        <label>เลขประจำตัวนักเรียน</label>
+        <input type="text" name="student_id" placeholder="กรอกเลขประจำตัวนักเรียน" required autofocus>
+        <button type="submit" style="margin-top:16px;width:100%;">เข้าสู่ระบบ</button>
+        <p style="font-size:0.8rem;color:#6b7280;margin-top:12px;"></p>
+    </form>
+
+    <form class="login-form" id="form-teacher" method="POST" action="{{ url_for('login_teacher') }}">
+        <label>ชื่อผู้ใช้งาน</label>
+        <input type="text" name="teacher_name" placeholder="กรอกชื่อผู้ใช้งาน" required>
+        <label>รหัสผ่าน</label>
+        <input type="password" name="password" placeholder="กรอกรหัสผ่าน" required>
+        <button type="submit" style="margin-top:16px;width:100%;">เข้าสู่ระบบ</button>
+        <p style="font-size:0.8rem;color:#6b7280;margin-top:12px;"></p>
+    </form>
+</div>
+
+<script>
+function showTab(ev, name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.login-form').forEach(f => f.classList.remove('active'));
+    document.getElementById('form-' + name).classList.add('active');
+    ev.target.classList.add('active');
+}
+</script>
+{% endblock %}

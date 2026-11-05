@@ -1,0 +1,445 @@
+{% extends "base.html" %}
+{% block title %}แผงควบคุมผู้ดูแลระบบ{% endblock %}
+{% block content %}
+
+<a class="back-link" href="{{ url_for('teacher_dashboard') }}">&larr; กลับหน้าหลักครู</a>
+
+<h2>แผงควบคุมผู้ดูแลระบบ</h2>
+<p style="color:#6b7280;">จัดการข้อมูลครู นักเรียน วิชาเสริม และการตั้งค่าระบบ</p>
+
+<!-- ==================== ตั้งค่าเทอม ==================== -->
+<details class="section-toggle" open>
+<summary class="section-title">📅 ตั้งค่าวันเปิดเทอมและวันสิ้นสุดเทอม</summary>
+<div class="card">
+    <p class="form-hint" style="font-weight:600;color:#1f2937;">
+        เทอมปัจจุบัน:
+        วันเปิดเทอม {{ term.term_start_date.strftime('%d/%m/%Y') if term and term.term_start_date else 'ยังไม่ได้ตั้งค่า' }}
+        · วันสิ้นสุดเทอม {{ term.term_end_date.strftime('%d/%m/%Y') if term and term.term_end_date else 'ยังไม่ได้ตั้งค่า' }}
+    </p>
+    <form method="POST" action="{{ url_for('admin_edit_term') }}">
+        <label for="termStartDate">วันเปิดเทอม (วัน/เดือน/ปี ค.ศ.)</label>
+        <input type="text" id="termStartDate" name="term_start_date" inputmode="numeric"
+               placeholder="เช่น 14/10/2026" pattern="(?:0[1-9]|[12][0-9]|3[01])/(?:0[1-9]|1[0-2])/[0-9]{4}"
+               title="กรอกวันที่ วัน/เดือน/ปี ค.ศ. เช่น 14/10/2026" maxlength="10"
+               value="{{ term_form.get('term_start_date', term.term_start_date.strftime('%d/%m/%Y') if term and term.term_start_date else '') }}" required>
+        <label for="termEndDate">วันสิ้นสุดเทอม (วัน/เดือน/ปี ค.ศ.)</label>
+        <input type="text" id="termEndDate" name="term_end_date" inputmode="numeric"
+               placeholder="เช่น 31/12/2026" pattern="(?:0[1-9]|[12][0-9]|3[01])/(?:0[1-9]|1[0-2])/[0-9]{4}"
+               title="กรอกวันที่ วัน/เดือน/ปี ค.ศ. เช่น 31/12/2026" maxlength="10"
+               value="{{ term_form.get('term_end_date', term.term_end_date.strftime('%d/%m/%Y') if term else '') }}" required>
+        <button type="submit" style="margin-top:10px;">บันทึก</button>
+    </form>
+</div>
+</details>
+
+<!-- ==================== วันหยุด ==================== -->
+<details class="section-toggle" id="holidayCalendar" open>
+<summary class="section-title">🏖️ วันหยุด ({{ holidays|length }})</summary>
+<div class="card">
+    <h3 style="margin-top:20px;">📅 ปฏิทินวันหยุด</h3>
+    <div class="card" style="background:#f8fafc;">
+        {# ปฏิทินสร้างจาก Python ทั้งหมด: ปุ่มเปลี่ยนเดือน/เลือกวันหยุดส่งแบบ GET เพื่อพาวันที่ที่ติ๊กไว้ไปด้วย #}
+        <form method="POST" action="{{ url_for('admin_bulk_new_holiday') }}">
+            <input type="hidden" name="calendar_month" value="{{ cal.month_value }}">
+            {% for iso in cal.other_selected %}<input type="hidden" name="sel" value="{{ iso }}">{% endfor %}
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <button type="submit" formmethod="get" formaction="{{ url_for('admin_dashboard', _anchor='holidayCalendar') }}"
+                        name="goto" value="{{ cal.prev_month }}" class="btn-secondary">&larr; เดือนก่อนหน้า</button>
+                <strong style="font-size:1.05rem;">{{ cal.label }}</strong>
+                <button type="submit" formmethod="get" formaction="{{ url_for('admin_dashboard', _anchor='holidayCalendar') }}"
+                        name="goto" value="{{ cal.next_month }}" class="btn-secondary">เดือนถัดไป &rarr;</button>
+            </div>
+            <div class="calendar-grid">
+                {% for name in cal.weekdays %}<div class="cal-day-label">{{ name }}</div>{% endfor %}
+                {% for week in cal.rows %}{% for day in week %}
+                    {% if not day %}
+                        <div class="cal-cell cal-empty"></div>
+                    {% elif day.holiday %}
+                        <button type="submit" formmethod="get" formaction="{{ url_for('admin_dashboard', _anchor='holidayCalendar') }}"
+                                name="holiday" value="{{ day.holiday.id }}"
+                                class="cal-cell cal-holiday{{ ' cal-term-start' if day.term_start }}{{ ' cal-active' if day.active }}"
+                                title="{{ day.holiday.description or 'วันหยุด' }}"
+                                aria-label="แก้ไขวันหยุด {{ '%02d/%02d/%d'|format(day.date.day, day.date.month, day.date.year) }} {{ day.holiday.description }}">
+                            {{ day.date.day }}
+                            {% if day.term_start %}<small class="cal-holiday-name">เปิดเทอม</small>{% endif %}
+                            <small class="cal-holiday-name">{{ day.holiday.description or 'วันหยุด' }}</small>
+                        </button>
+                    {% else %}
+                        <label class="cal-cell cal-pick{{ ' cal-term-start' if day.term_start }}">
+                            <input type="checkbox" name="sel" value="{{ day.iso }}"{{ ' checked' if day.selected }}>
+                            <span>{{ day.date.day }}{% if day.term_start %}<small class="cal-holiday-name">เปิดเทอม</small>{% endif %}</span>
+                        </label>
+                    {% endif %}
+                {% endfor %}{% endfor %}
+            </div>
+
+            <p style="font-size:0.85rem;color:#6b7280;margin-top:10px;">
+                ติ๊กวันที่ต้องการ (เลือกได้หลายวัน) แล้วกรอกรายละเอียดด้านล่าง หรือคลิกวันหยุดสีเขียวเพื่อแก้ไข/ลบ
+            </p>
+            <label for="calendarAddDescription">รายละเอียด (ใช้กับทุกวันที่เลือก ถ้ามี)</label>
+            <input type="text" id="calendarAddDescription" name="description" maxlength="200" placeholder="เช่น วันหยุดนักขัตฤกษ์">
+            <button type="submit" style="margin-top:10px;">บันทึกวันหยุดที่เลือก</button>
+        </form>
+
+        {% if cal.editor %}
+        <div class="holiday-editor">
+            <h4>{{ cal.editor.title }}</h4>
+            <form method="POST" action="{{ url_for('admin_edit_holiday', holiday_id=cal.editor.holiday.id) }}">
+                <input type="hidden" name="calendar_month" value="{{ cal.month_value }}">
+                <label for="holidayEditDate">วันที่ (วัน/เดือน/ปี ค.ศ.)</label>
+                <input type="text" id="holidayEditDate" name="holiday_date" inputmode="numeric" value="{{ cal.editor.date_text }}"
+                       placeholder="เช่น 14/10/2026" pattern="(?:0[1-9]|[12][0-9]|3[01])/(?:0[1-9]|1[0-2])/[0-9]{4}"
+                       title="กรอกวันที่ วัน/เดือน/ปี ค.ศ. เช่น 14/10/2026" maxlength="10" required>
+                <label for="holidayEditDescription">รายละเอียด</label>
+                <input type="text" id="holidayEditDescription" name="description" maxlength="200" value="{{ cal.editor.description }}" placeholder="เช่น วันหยุดนักขัตฤกษ์">
+                <div class="holiday-editor-actions">
+                    <button type="submit">บันทึกการแก้ไข</button>
+                    <a class="btn btn-secondary" href="{{ url_for('admin_dashboard', month=cal.month_value, _anchor='holidayCalendar') }}">ยกเลิก</a>
+                </div>
+            </form>
+            <form method="POST" action="{{ url_for('admin_delete_holiday', holiday_id=cal.editor.holiday.id) }}" data-confirm="ลบวันหยุดที่เลือก?">
+                <input type="hidden" name="calendar_month" value="{{ cal.month_value }}">
+                <button type="submit" class="btn-danger">ลบวันหยุดนี้</button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+</div>
+</details>
+
+<!-- ==================== ครู ==================== -->
+<details class="section-toggle" open>
+<summary class="section-title">👩‍🏫 ครู/อาจารย์ (<span id="teacherCount">{{ teachers|length }}</span>)</summary>
+<div class="card">
+    <div id="teacherTableBox">
+    <table>
+        <thead><tr><th>ชื่อครู</th><th>ชื่อผู้ใช้</th><th>รายวิชาที่สอน</th><th>สิทธิ์แอดมิน</th><th>จัดการ</th></tr></thead>
+        <tbody>
+        {% for t in teachers %}
+            <tr>
+                <td>{{ t.name }}{% if t.name_en %}<br><span style="font-size:0.8rem;color:#6b7280;">{{ t.name_en }}</span>{% endif %}</td>
+                <td>{{ t.username }}</td>
+                <td>{{ t.taught_subjects|map(attribute='name')|unique|join(', ') or '-' }}</td>
+                <td>{% if t.is_admin %}<span class="badge badge-green">แอดมิน</span>{% else %}-{% endif %}</td>
+                <td>
+                    <details>
+                        <summary style="cursor:pointer;color:#2563eb;">แก้ไข/ลบ</summary>
+                        <form method="POST" action="{{ url_for('admin_edit_teacher', teacher_id=t.id) }}" style="margin-top:8px;">
+                            <label>ชื่อ-นามสกุลครู (ภาษาไทย)</label><input type="text" name="name" value="{{ t.name }}" required>
+                            <label>ชื่อ-นามสกุล (ภาษาอังกฤษ)</label>
+                            <input type="text" name="name_en" value="{{ t.name_en or '' }}" placeholder="เช่น Somchai Boonmee" pattern="[A-Za-z][A-Za-z.'\- ]*[A-Za-z]" title="ตัวอักษรภาษาอังกฤษ: ชื่อจริง เว้นวรรค นามสกุล">
+                            <p class="form-hint" style="margin:2px 0 6px;">ชื่อผู้ใช้เข้าสู่ระบบ: <strong>{{ t.username }}</strong>
+                                {% if not t.name_en %}— ยังไม่มีชื่อภาษาอังกฤษ (เว้นว่างไว้ = ใช้ชื่อผู้ใช้เดิม){% else %}— เปลี่ยนชื่อภาษาอังกฤษแล้วชื่อผู้ใช้จะเปลี่ยนตาม{% endif %}</p>
+                            <label>รายวิชาที่สอนทั้งหมด (ไม่ระบุชั้น)</label>
+                            <p style="margin:2px 0 6px;font-size:0.85rem;color:#374151;">{{ t.taught_subjects|map(attribute='name')|unique|join(', ') or 'ยังไม่มีรายวิชา' }}</p>
+                            <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.85rem;margin-top:6px;">
+                                <input type="checkbox" name="is_admin" style="width:auto;" {% if t.is_admin %}checked{% endif %}>
+                                เป็นผู้ดูแลระบบ
+                            </label>
+                            <button type="submit" style="margin-top:6px;">บันทึก</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('admin_reset_teacher_password', teacher_id=t.id) }}"
+                              data-confirm="รีเซ็ตรหัสผ่านของครูคนนี้? ระบบจะสุ่มรหัสใหม่ให้และแสดงครั้งเดียว" style="margin-top:6px;">
+                            <button type="submit" class="btn-secondary">รีเซ็ตรหัสผ่าน</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('admin_delete_teacher', teacher_id=t.id) }}"
+                              data-confirm="ลบครูคนนี้? วิชาที่ครูคนนี้สอนอยู่คนเดียวและตารางสอนของครูจะถูกลบด้วย (วิชาที่มีครูท่านอื่นสอนร่วมจะยังอยู่)" data-ajax="delete-teacher" style="margin-top:6px;">
+                            <button type="submit" class="btn-danger">ลบ</button>
+                        </form>
+                    </details>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    <h3 style="margin-top:20px;">เพิ่มครูใหม่</h3>
+    <form method="POST" action="{{ url_for('admin_new_teacher') }}">
+        <label>ชื่อ-นามสกุล (ภาษาไทย)</label>
+        <input type="text" name="name" required placeholder="เช่น สมชาย บุญมี">
+        <label>ชื่อ-นามสกุล (ภาษาอังกฤษ)</label>
+        <input type="text" name="name_en" id="newTeacherNameEn" required placeholder="เช่น Somchai Boonmee"
+               pattern="[A-Za-z][A-Za-z.'\- ]*[A-Za-z]" title="ตัวอักษรภาษาอังกฤษ: ชื่อจริง เว้นวรรค นามสกุล"
+               oninput="previewTeacherUsername()">
+        <p style="font-size:0.9rem;margin:6px 0 0;">ชื่อผู้ใช้เข้าสู่ระบบ: <strong id="teacherUsernamePreview" style="color:#2563eb;">—</strong></p>
+        <p style="font-size:0.85rem;color:#6b7280;">ชื่อผู้ใช้สร้างอัตโนมัติจากชื่อจริงภาษาอังกฤษ + อักษรแรกของนามสกุล</p>
+        <script>
+        function previewTeacherUsername(){
+            const parts=document.getElementById('newTeacherNameEn').value.trim().split(/\s+/).filter(Boolean);
+            const el=document.getElementById('teacherUsernamePreview');
+            const first=(parts[0]||'').replace(/[^A-Za-z]/g,''), last=(parts[parts.length-1]||'').replace(/[^A-Za-z]/g,'');
+            if(parts.length<2||!first||!last){el.textContent='—';return;}
+            el.textContent=first.charAt(0).toUpperCase()+first.slice(1).toLowerCase()+last.charAt(0).toUpperCase();
+        }
+        </script>
+        <button type="submit" style="margin-top:10px;">เพิ่มครู</button>
+    </form>
+
+    <h3 style="margin-top:24px;">📂 นำเข้าจากไฟล์ (เพิ่มทีเดียวหลายคน)</h3>
+    <form method="POST" action="{{ url_for('admin_import_teachers') }}" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".csv,.xlsx" required>
+        <button type="submit" style="margin-top:10px;">นำเข้าไฟล์</button>
+    </form>
+    <p style="font-size:0.8rem;color:#6b7280;margin-top:8px;">
+    </p>
+</div>
+</details>
+
+<!-- ==================== นักเรียน ==================== -->
+<details class="section-toggle" open>
+<summary class="section-title">🎓 นักเรียน ({{ students|length }})</summary>
+<div class="card">
+    <style>
+      .pick-row{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px;}
+      .pick-btn{width:auto;margin:0;padding:8px 16px;border:1px solid #cbd5e1;background:#fff;color:#1e293b;border-radius:999px;cursor:pointer;font-size:.95rem;}
+      .pick-btn:hover{background:#eff6ff;border-color:#93c5fd;}
+      .pick-btn.active{background:#2563eb;border-color:#2563eb;color:#fff;}
+      .pick-btn .cnt{opacity:.75;font-size:.8rem;margin-left:4px;}
+      .grade-card{cursor:pointer;}
+      .grade-rooms{margin:-2px 0 14px 14px;}
+      .grade-rooms[hidden]{display:none;}
+      .grade-card.active{background:#bbf7d0;box-shadow:0 0 0 2px #16a34a inset;}
+    </style>
+    <div style="max-width:420px;">
+        <label for="studentSearch">ค้นหานักเรียนจากชื่อหรือเลขประจำตัว</label>
+        <input id="studentSearch" type="search" placeholder="พิมพ์ชื่อ นามสกุล หรือเลขประจำตัว" oninput="renderStudents()">
+    </div>
+
+    <div id="gradePicker" style="margin-top:12px;">
+        <div id="gradeButtons">
+            {% for g in grade_levels %}
+            <div class="grade-block" data-grade="{{ g }}">
+                <div class="subject-card teacher-subject-card grade-card" role="button" tabindex="0" data-grade="{{ g }}"
+                     onclick="pickGrade(this.dataset.grade)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pickGrade(this.dataset.grade);}">
+                    <div class="subject-name">มัธยมศึกษาปีที่ {{ g[2:] }}</div>
+                </div>
+                <div class="grade-rooms pick-row" hidden></div>
+            </div>
+            {% endfor %}
+            {% if students_by_grade['ไม่ระบุชั้น'] %}
+            <div class="grade-block" data-grade="ไม่ระบุชั้น">
+                <div class="subject-card teacher-subject-card grade-card" role="button" tabindex="0" data-grade="ไม่ระบุชั้น"
+                     onclick="pickGrade(this.dataset.grade)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pickGrade(this.dataset.grade);}">
+                    <div class="subject-name">ไม่ระบุชั้น</div>
+                </div>
+                <div class="grade-rooms pick-row" hidden></div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    <p id="studentFilterNote" style="color:#6b7280;font-size:.9rem;margin:8px 0;">เลือกระดับชั้นเพื่อดูห้องเรียน หรือค้นหาจากชื่อ/เลขประจำตัวได้</p>
+
+    <form method="POST" action="{{ url_for('admin_bulk_edit_students') }}" id="bulkStudentForm">
+      <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;background:#f8fafc;padding:12px;border-radius:10px;margin:10px 0;">
+        <strong style="width:100%;">แก้ไขนักเรียนหลายคนพร้อมกัน</strong>
+        <span id="selectedStudentCount" style="color:#475569;">เลือกนักเรียนจากช่องหน้าแถว</span>
+        <div><label>ตั้งชั้นใหม่ (ไม่บังคับ)</label><select name="bulk_grade"><option value="">ไม่เปลี่ยน</option>{% for g in grade_levels %}<option value="{{ g }}">{{ g }}</option>{% endfor %}</select></div>
+        <div><label>ตั้งห้องใหม่ (ไม่บังคับ)</label><select name="bulk_room"><option value="">ไม่เปลี่ยน</option><option value="1">ห้อง 1</option><option value="2">ห้อง 2</option></select></div>
+        <div><label>ตั้งเลขที่เริ่มต้น (ไม่บังคับ)</label><input type="number" min="1" name="bulk_roll_start" placeholder="เช่น 1"></div>
+        <button type="submit" onclick="bulkEditClick(event)">บันทึกการแก้ไขที่เลือก</button>
+        <button type="submit" class="btn-danger" formaction="{{ url_for('admin_bulk_delete_students') }}" formnovalidate onclick="bulkDeleteClick(event)">🗑 ลบนักเรียนที่เลือก</button>
+      </div>
+    </form>
+      <div id="studentEmptyMsg" style="display:none;padding:18px;text-align:center;color:#6b7280;background:#f8fafc;border-radius:10px;margin-top:8px;"></div>
+      <div id="studentTableWrap" style="overflow-x:auto;display:none;">
+      <table style="margin-top:8px;min-width:760px;">
+        <thead><tr><th><input type="checkbox" id="selectVisibleStudents" onchange="toggleVisibleStudents(this)"></th><th>เลขประจำตัว</th><th>ชื่อ-นามสกุล</th><th>ชั้น</th><th>ห้อง</th><th>เลขที่</th><th>แก้ไขรายคน</th></tr></thead>
+        <tbody id="studentTableBody">
+        {% for st in students %}
+          <tr data-grade="{{ st.grade_level if st.grade_level in grade_levels else 'ไม่ระบุชั้น' }}" data-room="{{ st.class_room or '' }}" data-name="{{ st.name|lower }}" data-student-id="{{ st.student_id }}" style="display:none;">
+            <td><input type="checkbox" class="student-pick" name="student_ids" form="bulkStudentForm" value="{{ st.id }}" onchange="updateSelectedCount()" aria-label="เลือก {{ st.name }}"></td>
+            <td>{{ st.student_id }}</td><td>{{ st.name }}</td><td>{{ st.grade_level or '-' }}</td><td>{{ st.class_room or '-' }}</td><td>{{ st.roll_number if st.roll_number is not none else '-' }}</td>
+            <td><details><summary style="cursor:pointer;color:#2563eb;">แก้ไข</summary>
+              <form method="POST" action="{{ url_for('admin_edit_student', student_id=st.id) }}" style="margin-top:8px;">
+                <input type="text" name="student_id" value="{{ st.student_id }}" required>
+                <input type="text" name="name" value="{{ st.name }}" required>
+                <select name="grade_level"><option value="">ไม่ระบุ</option>{% for g in grade_levels %}<option value="{{ g }}" {% if st.grade_level == g %}selected{% endif %}>{{ g }}</option>{% endfor %}</select>
+                <input type="text" name="class_room" value="{{ st.class_room or '' }}" placeholder="ห้อง เช่น 1">
+                <label>เลขที่</label><input type="number" min="1" name="roll_number" value="{{ st.roll_number if st.roll_number is not none else '' }}">
+                <button type="submit" style="margin-top:6px;">บันทึก</button>
+              </form>
+              <form method="POST" action="{{ url_for('admin_delete_student', student_id=st.id) }}" data-confirm="ลบนักเรียนคนนี้? ข้อมูลที่เกี่ยวข้องอาจถูกลบด้วย" style="margin-top:6px;"><button type="submit" class="btn-danger">ลบ</button></form>
+            </details></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+    <script>
+    let pickedGrade=null, pickedRoom=null;
+    const DEFAULT_ROOMS={{ sections|tojson }}.map(String);
+    function studentRows(){return [...document.querySelectorAll('#studentTableBody tr')];}
+    function saveStudentView(){try{sessionStorage.setItem('adminStudentView',JSON.stringify({g:pickedGrade,r:pickedRoom}));}catch(e){}}
+    function loadStudentView(){try{const v=JSON.parse(sessionStorage.getItem('adminStudentView')||'null');if(v){pickedGrade=v.g;pickedRoom=v.r;}}catch(e){}}
+    function clearSelections(){document.querySelectorAll('.student-pick').forEach(c=>c.checked=false);document.getElementById('selectVisibleStudents').checked=false;updateSelectedCount();}
+    function pickGrade(g){pickedGrade=(pickedGrade===g)?null:g;pickedRoom=null;document.getElementById('studentSearch').value='';saveStudentView();clearSelections();renderStudents();}
+    function pickRoom(r){pickedRoom=(pickedRoom===r)?null:r;document.getElementById('studentSearch').value='';saveStudentView();clearSelections();renderStudents();if(pickedRoom!==null)document.getElementById('studentFilterNote').scrollIntoView({behavior:'smooth',block:'start'});}
+    function gradeFull(g){return g&&g.startsWith('ม.')?'มัธยมศึกษาปีที่ '+g.slice(2):g;}
+    function roomLabel(r){return r===''?'ไม่ระบุห้อง':'ห้อง '+r;}
+    function renderRooms(){
+      document.querySelectorAll('.grade-block').forEach(block=>{
+        const box=block.querySelector('.grade-rooms');
+        if(block.dataset.grade!==pickedGrade){box.hidden=true;box.innerHTML='';return;}
+        const inGrade=studentRows().filter(r=>r.dataset.grade===pickedGrade);
+        const counts={}; inGrade.forEach(r=>{counts[r.dataset.room]=(counts[r.dataset.room]||0)+1;});
+        let rooms=pickedGrade==='ไม่ระบุชั้น'?[]:[...DEFAULT_ROOMS];
+        Object.keys(counts).forEach(k=>{if(!rooms.includes(k))rooms.push(k);});
+        rooms.sort((a,b)=>a===''?1:b===''?-1:a.localeCompare(b,undefined,{numeric:true}));
+        box.innerHTML='';
+        rooms.forEach(r=>{
+          const b=document.createElement('button');b.type='button';b.className='pick-btn'+(pickedRoom===r?' active':'');
+          b.textContent=roomLabel(r);const c=document.createElement('span');c.className='cnt';c.textContent='('+(counts[r]||0)+' คน)';b.appendChild(c);
+          b.onclick=()=>pickRoom(r);box.appendChild(b);
+        });
+        box.hidden=false;
+      });
+    }
+    function renderStudents(){
+      const query=(document.getElementById('studentSearch').value||'').trim().toLocaleLowerCase();
+      document.querySelectorAll('#gradeButtons .grade-card').forEach(b=>b.classList.toggle('active',b.dataset.grade===pickedGrade));
+      renderRooms();
+      document.getElementById('gradePicker').style.display=query?'none':'';
+      const note=document.getElementById('studentFilterNote'), empty=document.getElementById('studentEmptyMsg'), wrap=document.getElementById('studentTableWrap');
+      let show=null, count=0, msg='';
+      if(query){
+        show=r=>(r.dataset.name+' '+r.dataset.studentId).toLocaleLowerCase().includes(query);
+        msg='ไม่พบนักเรียนที่ตรงกับคำค้น';
+      }else if(pickedGrade!==null&&pickedRoom!==null){
+        show=r=>r.dataset.grade===pickedGrade&&r.dataset.room===pickedRoom;
+        msg='ยังไม่มีนักเรียนในขณะนี้';
+      }
+      studentRows().forEach(r=>{const ok=show?show(r):false;r.style.display=ok?'':'none';if(ok)count++;});
+      if(!show){
+        wrap.style.display='none';empty.style.display='none';
+        note.textContent=pickedGrade?'เลือกห้องของ'+gradeFull(pickedGrade)+' เพื่อดูรายชื่อนักเรียน':'เลือกระดับชั้นเพื่อดูห้องเรียน หรือค้นหาจากชื่อ/เลขประจำตัวได้';
+      }else if(count){
+        wrap.style.display='';empty.style.display='none';
+        note.textContent=query?'พบ '+count+' คนที่ตรงกับคำค้น':'แสดง '+count+' คน — '+gradeFull(pickedGrade)+' '+roomLabel(pickedRoom);
+      }else{
+        wrap.style.display='none';empty.style.display='';empty.textContent=msg;
+        note.textContent=query?'':gradeFull(pickedGrade)+' '+roomLabel(pickedRoom);
+      }
+      document.getElementById('selectVisibleStudents').checked=false; updateSelectedCount();
+    }
+    loadStudentView(); renderStudents();
+    function toggleVisibleStudents(master){
+      document.querySelectorAll('#studentTableBody tr').forEach(row=>{if(row.style.display!=='none'){const cb=row.querySelector('.student-pick');cb.checked=master.checked;}}); updateSelectedCount();
+    }
+    function updateSelectedCount(){const n=document.querySelectorAll('.student-pick:checked').length;document.getElementById('selectedStudentCount').textContent='เลือกแล้ว '+n+' คน';}
+    function bulkDeleteClick(e){
+      e.preventDefault();
+      const btn=e.currentTarget, n=document.querySelectorAll('.student-pick:checked').length;
+      if(!n){uiAlert('กรุณาเลือกนักเรียนที่ต้องการลบอย่างน้อย 1 คน');return;}
+      uiConfirm('ลบนักเรียน '+n+' คนที่เลือก? การลงทะเบียนเรียนและสถานะการส่งงานของนักเรียนเหล่านี้จะถูกลบด้วย และกู้คืนไม่ได้',{okText:'ลบนักเรียน',danger:true})
+        .then(ok=>{if(ok)btn.form.requestSubmit(btn);});
+    }
+    function bulkEditClick(e){
+      e.preventDefault();
+      const btn=e.currentTarget, n=document.querySelectorAll('.student-pick:checked').length;
+      const g=document.querySelector('[name="bulk_grade"]').value, r=document.querySelector('[name="bulk_room"]').value, roll=document.querySelector('[name="bulk_roll_start"]').value;
+      if(!n){uiAlert('กรุณาเลือกนักเรียนอย่างน้อย 1 คน');return;}
+      if(!g&&!r&&!roll){uiAlert('กรุณากำหนดอย่างน้อยหนึ่งรายการที่ต้องการเปลี่ยน');return;}
+      uiConfirm('ยืนยันแก้ไขข้อมูลนักเรียน '+n+' คนหรือไม่?'+(roll?' เลขที่จะเรียงต่อจาก '+roll:''),{okText:'บันทึกการแก้ไข',danger:false})
+        .then(ok=>{if(ok)btn.form.requestSubmit(btn);});
+    }
+
+    // ลบครู/วิชาเสริมแบบไม่รีโหลดหน้า
+    uiAjaxHandlers['delete-teacher']=function(form,d){
+      uiRemoveRow(form.closest('tr'));
+      document.querySelectorAll('#addElectiveForm input[name="teacher_ids"][value="'+d.teacher_id+'"]').forEach(i=>(i.closest('label')||i).remove());
+      uiToast(d.message,'success');
+      setTimeout(()=>uiRefreshParts(['#teacherTableBox','#teacherCount','#electiveTableBox','#electiveCount']),300);
+    };
+    uiAjaxHandlers['delete-elective']=function(form,d){
+      uiRemoveRow(form.closest('tr'));
+      uiToast(d.message,'success');
+      setTimeout(()=>uiRefreshParts(['#teacherTableBox','#electiveTableBox','#electiveCount']),300);
+    };
+    </script>
+
+    <h3 style="margin-top:20px;">เพิ่มนักเรียนใหม่</h3>
+    <form method="POST" action="{{ url_for('admin_new_student') }}">
+      <label>เลขประจำตัวนักเรียน</label><input type="text" name="student_id" required>
+      <label>ชื่อ-นามสกุล</label><input type="text" name="name" required>
+      <label>ระดับชั้น</label><select name="grade_level"><option value="">ไม่ระบุ</option>{% for g in grade_levels %}<option value="{{ g }}">{{ g }}</option>{% endfor %}</select>
+      <label>ห้องเรียน</label><select name="class_room"><option value="">ไม่ระบุ</option><option value="1">ห้อง 1</option><option value="2">ห้อง 2</option></select>
+      <label>เลขที่</label><input type="number" min="1" name="roll_number" placeholder="เลขที่ในห้อง">
+      <button type="submit" style="margin-top:10px;">เพิ่มนักเรียน</button>
+    </form>
+    <h3 style="margin-top:24px;">📂 นำเข้าจากไฟล์ (เพิ่มทีเดียวหลายคน)</h3>
+    <form method="POST" action="{{ url_for('admin_import_students') }}" enctype="multipart/form-data">
+      <input type="file" name="file" accept=".csv,.xlsx" required><button type="submit" style="margin-top:10px;">นำเข้าไฟล์</button>
+    </form>
+</details>
+
+<!-- ==================== วิชาเสริม ==================== -->
+<details class="section-toggle" open>
+<summary class="section-title">📚 วิชาเสริม (<span id="electiveCount">{{ subjects|length }}</span>)</summary>
+<div class="card">
+    <p style="font-size:0.85rem;color:#6b7280;margin-bottom:10px;">
+        แอดมินเพิ่มได้เฉพาะ <strong>ชื่อวิชาเสริมและครูผู้สอน</strong> (มีครูได้มากกว่า 1 คน) —
+        ครูผู้สอนของวิชานั้นจะเข้าไปเพิ่มนักเรียนในวิชาเองที่หน้าวิชา
+    </p>
+    <div id="electiveTableBox">
+    <table>
+        <thead><tr><th>ชื่อวิชาเสริม</th><th>รหัส</th><th>ห้อง</th><th>ครูผู้สอน</th><th>นักเรียน</th><th>จัดการ</th></tr></thead>
+        <tbody>
+        {% for subj in subjects %}
+            <tr>
+                <td>{{ subj.name }}</td>
+                <td>{{ subj.code }}</td>
+                <td>{{ subj.room }}</td>
+                <td>{{ subj.teacher_names() }}</td>
+                <td>{{ subj.enrollments|length }} คน</td>
+                <td>
+                    <details>
+                        <summary style="cursor:pointer;color:#2563eb;">แก้ไข/ลบ</summary>
+                        <form method="POST" action="{{ url_for('admin_edit_subject', subject_id=subj.id) }}" style="margin-top:8px;">
+                            <input type="text" name="name" value="{{ subj.name }}" required>
+                            <input type="text" name="code" value="{{ subj.code }}" placeholder="รหัสวิชา">
+                            <input type="text" name="room" value="{{ subj.room }}" placeholder="ห้องเรียนหลัก">
+                            {% set subj_teacher_ids = subj.teachers|map(attribute='id')|list %}
+                            <label style="display:block;margin-top:6px;font-size:0.85rem;">ครูผู้สอน (เลือกได้มากกว่า 1 คน)</label>
+                            {% for t in teachers %}
+                            <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.85rem;margin-right:8px;">
+                                <input type="checkbox" name="teacher_ids" value="{{ t.id }}" style="width:auto;"
+                                       {% if t.id in subj_teacher_ids %}checked{% endif %}>
+                                {{ t.name }}
+                            </label>
+                            {% endfor %}
+                            <button type="submit" style="margin-top:6px;display:block;">บันทึก</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('admin_delete_subject', subject_id=subj.id) }}"
+                              data-confirm="ลบวิชาเสริมนี้? งาน รายชื่อนักเรียน และตารางสอนของวิชานี้จะถูกลบด้วย" data-ajax="delete-elective" style="margin-top:6px;">
+                            <button type="submit" class="btn-danger">ลบ</button>
+                        </form>
+                    </details>
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="6" style="color:#6b7280;">ยังไม่มีวิชาเสริม</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+
+    <h3 style="margin-top:20px;">เพิ่มวิชาเสริมใหม่</h3>
+    <form method="POST" action="{{ url_for('admin_new_subject') }}" id="addElectiveForm" style="margin-top:8px;">
+        <label>ชื่อวิชาเสริม</label>
+        <input type="text" name="name" required placeholder="เช่น ชุมนุมดนตรี">
+        <label>รหัสวิชา</label>
+        <input type="text" name="code" placeholder="เช่น CLB101">
+        <label>ห้องเรียนหลัก</label>
+        <input type="text" name="room" placeholder="เช่น ห้องดนตรี">
+        <label style="display:block;margin-top:8px;">ครูผู้สอน (เลือกได้มากกว่า 1 คน)</label>
+        {% for t in teachers %}
+        <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.85rem;margin-right:10px;">
+            <input type="checkbox" name="teacher_ids" value="{{ t.id }}" style="width:auto;">
+            {{ t.name }}
+        </label>
+        {% endfor %}
+        <button type="submit" style="margin-top:10px;display:block;">เพิ่มวิชาเสริม</button>
+    </form>
+</div>
+</details>
+
+{% endblock %}

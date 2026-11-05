@@ -1,0 +1,359 @@
+{% extends "base.html" %}
+{% block title %}หน้าหลักคุณครู{% endblock %}
+{% block content %}
+{% macro slot_label(slot) %}
+<div class="slot-filled">
+    <strong>{{ slot.subject.name }}</strong><br>
+    <span style="color:#6b7280;">{{ slot.class_label() }} · {{ slot.duration }} คาบ</span>
+</div>
+{% endmacro %}
+
+<h2>{{ teacher.name }}</h2>
+
+{% if session.get('is_admin') %}
+<a class="btn" href="{{ url_for('admin_dashboard') }}">⚙️ ไปแผงควบคุมผู้ดูแลระบบ</a>
+{% endif %}
+
+<details class="section-toggle" open>
+<summary class="section-title">📚 รายวิชาที่สอน</summary>
+{% for subject in subjects %}
+<a class="subject-card teacher-subject-card" href="{{ url_for('teacher_subject', subject_id=subject.id) }}">
+    <div>
+        <div class="subject-name">{{ subject.name }}
+            <span style="font-weight:400;color:#6b7280;">({{ subject.code }})</span>
+        </div>
+        <div class="subject-sub">
+            {% if subject.uses_classes() %}{{ subject.class_labels() }} · {% endif %}งาน {{ subject.assignments|length }} ชิ้น · นักเรียน {{ subject.enrollments|length }} คน
+            {% if subject.teachers|length > 1 %}
+            · สอนร่วม: {{ subject.teacher_names() }}
+            {% endif %}
+        </div>
+    </div>
+</a>
+{% else %}
+<p>ยังไม่มีรายวิชาที่รับผิดชอบ</p>
+{% endfor %}
+</details>
+
+<div class="remaining-periods">
+    {% for row in remaining_by_subject_class %}
+    <div class="stat-box">
+        <div class="stat-subject">{{ row.subject_name }} ({{ row.subject_code }})</div>
+        <div class="stat-num">{{ row.remaining }}</div>
+        <div class="stat-label">คาบที่เหลือ · ชั้น {{ row.class_label }}</div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="period-now-box" id="periodNowBox">
+{% include "_period_box.html" %}
+</div>
+
+<p class="form-hint" style="margin:0 0 8px;">👆 กดที่ช่องคาบที่ต้องการ แล้วเลือกวิชาที่สอนจากป็อปอัพ — กดคาบที่มีวิชาอยู่แล้วเพื่อเปลี่ยนวิชาหรือลบ</p>
+<div class="schedule-rotate-wrapper" id="teacherScheduleTableWrapper">
+<table class="schedule-table fixed-grid" id="teacherScheduleTable">
+    <thead>
+        <tr>
+            <th>วัน \ คาบ</th>
+            {% for p in morning %}<th>คาบ {{ p }}</th>{% endfor %}
+            <th class="lunch-head">
+                <span class="lunch-cell">พักเที่ยง</span>
+            </th>
+            {% for p in afternoon %}<th>คาบ {{ p }}</th>{% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+    {% for i in range(5) %}
+        <tr>
+            <td class="day-col"><strong>{{ days[i] }}</strong></td>
+
+            {% set mp = namespace(p=morning[0]) %}
+            {% for cell in schedule_rows[i].morning %}
+                {% if cell.empty %}
+                <td class="slot-empty slot-click" data-day="{{ i }}" data-period="{{ mp.p }}" tabindex="0" role="button"
+                    aria-label="เพิ่มคาบสอน {{ days[i] }} คาบ {{ mp.p }}" title="กดเพื่อเลือกวิชาที่สอนในคาบนี้"></td>
+                {% set mp.p = mp.p + 1 %}
+                {% else %}
+                {% set slot = cell.slot %}
+                <td colspan="{{ cell.colspan }}" class="slot-click" data-slot-id="{{ slot.id }}" data-day="{{ i }}" data-period="{{ slot.period }}"
+                    data-subject-id="{{ slot.subject_id }}" data-grade="{{ slot.grade_level }}" data-section="{{ slot.section }}"
+                    data-duration="{{ slot.duration }}" tabindex="0" role="button" title="กดเพื่อแก้ไขหรือลบคาบนี้">
+                    {{ slot_label(slot) }}
+                </td>
+                {% set mp.p = mp.p + cell.colspan %}
+                {% endif %}
+            {% endfor %}
+
+            {% if i == 0 %}
+           <td class="lunch-cell" rowspan="5">
+                <span class="lunch-text">พักเที่ยง</span>
+            </td>
+            {% endif %}
+
+            {% set ap = namespace(p=afternoon[0]) %}
+            {% for cell in schedule_rows[i].afternoon %}
+                {% if cell.empty %}
+                <td class="slot-empty slot-click" data-day="{{ i }}" data-period="{{ ap.p }}" tabindex="0" role="button"
+                    aria-label="เพิ่มคาบสอน {{ days[i] }} คาบ {{ ap.p }}" title="กดเพื่อเลือกวิชาที่สอนในคาบนี้"></td>
+                {% set ap.p = ap.p + 1 %}
+                {% else %}
+                {% set slot = cell.slot %}
+                <td colspan="{{ cell.colspan }}" class="slot-click" data-slot-id="{{ slot.id }}" data-day="{{ i }}" data-period="{{ slot.period }}"
+                    data-subject-id="{{ slot.subject_id }}" data-grade="{{ slot.grade_level }}" data-section="{{ slot.section }}"
+                    data-duration="{{ slot.duration }}" tabindex="0" role="button" title="กดเพื่อแก้ไขหรือลบคาบนี้">
+                    {{ slot_label(slot) }}
+                </td>
+                {% set ap.p = ap.p + cell.colspan %}
+                {% endif %}
+            {% endfor %}
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+
+
+<script>
+// ตารางสอน: กดช่องคาบเพื่อเลือกวิชาที่สอนจากป็อปอัพ (เพิ่ม/แก้ไข/ลบ)
+(function () {
+    var SUBJECTS = {{ slot_subjects|tojson }};
+    var OCCUPIED = {{ slot_occupancy|tojson }};      // {วัน: {คาบ: รหัสคาบสอน}}
+    var DAYS = {{ days|tojson }};
+    var GRADES = {{ grade_levels|tojson }};
+    var SECTIONS = {{ sections|tojson }};
+    var URL_NEW = {{ url_for('new_schedule_slot')|tojson }};
+    var URL_EDIT = {{ url_for('edit_schedule_slot', slot_id=0)|tojson }};
+    var URL_DELETE = {{ url_for('delete_schedule_slot', slot_id=0)|tojson }};
+    var TIMES = {1:'08:30–09:20', 2:'09:20–10:10', 3:'10:10–11:00', 4:'11:00–11:50',
+                 5:'12:40–13:30', 6:'13:30–14:20', 7:'14:20–15:10', 8:'15:10–16:00'};
+
+    function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
+    function slotUrl(base, id) { return base.replace('/0/', '/' + id + '/'); }
+    function postForm(url, fields) {
+        var f = document.createElement('form'); f.method = 'POST'; f.action = url; f.style.display = 'none';
+        Object.keys(fields).forEach(function (k) { var i = document.createElement('input'); i.type = 'hidden'; i.name = k; i.value = fields[k]; f.appendChild(i); });
+        document.body.appendChild(f); f.submit();
+    }
+
+    // ตัวเลือกในป็อปอัพ: วิชาที่ผูกชั้น/ห้อง → 1 ตัวเลือกต่อห้อง, วิชาที่ไม่ผูกห้อง (เช่น วิชาเสริม) → เลือกชั้น/ห้องต่อ
+    function buildOptions(editing) {
+        var opts = [];
+        SUBJECTS.forEach(function (s) {
+            if (s.classes.length) s.classes.forEach(function (c) { opts.push({subject: s, grade: c.g, section: c.s, free: false}); });
+            else opts.push({subject: s, grade: '', section: '', free: true});
+        });
+        if (editing) {   // คาบเดิมที่ชั้น/ห้องไม่ตรงกับห้องของวิชาแล้ว ให้ยังเห็นเป็นตัวเลือกที่ใช้อยู่
+            var s = SUBJECTS.find(function (x) { return x.id === editing.subject; });
+            if (s && s.classes.length && !s.classes.some(function (c) { return c.g === editing.grade && c.s === editing.section; })) {
+                opts.unshift({subject: s, grade: editing.grade, section: editing.section, free: false, legacy: true});
+            }
+        }
+        return opts;
+    }
+
+    function open(ctx) {
+        var editing = ctx.slot || null, day = ctx.day, period = ctx.period;
+        var opts = buildOptions(editing), chosen = null;
+        var duration = editing ? editing.duration : 1;
+        var prev = document.activeElement;
+
+        var backdrop = el('div', 'ui-modal-backdrop'), box = el('div', 'ui-modal ui-modal-wide');
+        box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true');
+        box.appendChild(el('h3', 'ui-modal-title', editing ? 'แก้ไขคาบสอน' : 'เพิ่มคาบสอน'));
+        box.appendChild(el('p', 'slot-when', 'วัน' + DAYS[day] + ' · คาบ ' + period + ' (' + TIMES[period] + ')'));
+
+        box.appendChild(el('div', 'slot-label', 'เลือกวิชาที่สอน'));
+        var list = el('div', 'slot-options'); box.appendChild(list);
+        if (!opts.length) list.appendChild(el('p', 'form-hint', 'ยังไม่มีวิชาที่สอน — เพิ่มวิชาในส่วน “จัดการรายวิชา” ก่อน'));
+
+        var freeBox = el('div', 'slot-free'); freeBox.hidden = true;
+        var gSel = el('select'), rSel = el('select');
+        gSel.appendChild(new Option('— เลือกชั้น —', '')); GRADES.forEach(function (g) { gSel.appendChild(new Option(g, g)); });
+        rSel.appendChild(new Option('— เลือกห้อง —', '')); SECTIONS.forEach(function (r) { rSel.appendChild(new Option('ห้อง ' + r, r)); });
+        var gWrap = el('div'); gWrap.append(el('label', null, 'ระดับชั้น'), gSel);
+        var rWrap = el('div'); rWrap.append(el('label', null, 'ห้อง'), rSel);
+        freeBox.append(gWrap, rWrap); box.appendChild(freeBox);
+
+        box.appendChild(el('div', 'slot-label', 'จำนวนคาบ'));
+        var seg = el('div', 'slot-seg'), b1 = el('button', 'seg-btn', '1 คาบ'), b2 = el('button', 'seg-btn', '2 คาบติดกัน');
+        b1.type = b2.type = 'button'; seg.append(b1, b2); box.appendChild(seg);
+        var note = el('p', 'form-hint slot-note'); box.appendChild(note);
+
+        // 2 คาบติดกัน: ห้ามคร่อมพักเที่ยง (4→5) ห้ามเกินคาบ 8 และคาบถัดไปต้องว่าง
+        var nextBusy = OCCUPIED[day] && OCCUPIED[day][period + 1] && (!editing || OCCUPIED[day][period + 1] !== editing.id);
+        var canTwo = period !== 4 && period < 8 && !nextBusy;
+        if (!canTwo) { b2.disabled = true; if (duration === 2) duration = 1; note.textContent = period === 4 ? 'คาบ 4 ติดกับคาบ 5 ไม่ได้ เพราะคั่นด้วยพักเที่ยง' : period === 8 ? 'คาบ 8 เป็นคาบสุดท้ายของวัน' : 'คาบถัดไปมีการสอนอยู่แล้ว'; }
+        function paintDuration() { b1.classList.toggle('active', duration === 1); b2.classList.toggle('active', duration === 2); }
+        b1.onclick = function () { duration = 1; paintDuration(); };
+        b2.onclick = function () { if (canTwo) { duration = 2; paintDuration(); } };
+        paintDuration();
+
+        var actions = el('div', 'ui-modal-actions slot-actions');
+        var del = null;
+        if (editing) { del = el('button', 'ui-btn ui-btn-danger-outline', '🗑 ลบคาบนี้'); del.type = 'button'; actions.appendChild(del); }
+        var spacer = el('span', 'slot-spacer'); actions.appendChild(spacer);
+        var cancel = el('button', 'ui-btn ui-btn-cancel', 'ยกเลิก'); cancel.type = 'button';
+        var save = el('button', 'ui-btn ui-btn-primary', 'บันทึก'); save.type = 'button'; save.disabled = true;
+        actions.append(cancel, save); box.appendChild(actions);
+        backdrop.appendChild(box); document.body.appendChild(backdrop); document.body.classList.add('ui-modal-open');
+        requestAnimationFrame(function () { backdrop.classList.add('show'); });
+
+        function refreshSave() {
+            if (!chosen) { save.disabled = true; return; }
+            save.disabled = chosen.free ? !(gSel.value && rSel.value) : false;
+        }
+        function choose(o, btn) {
+            chosen = o;
+            list.querySelectorAll('.slot-opt').forEach(function (b) { b.classList.remove('active'); b.setAttribute('aria-pressed', 'false'); });
+            btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true');
+            freeBox.hidden = !o.free; refreshSave();
+        }
+        opts.forEach(function (o) {
+            var btn = el('button', 'slot-opt'); btn.type = 'button'; btn.setAttribute('aria-pressed', 'false');
+            btn.appendChild(el('strong', null, o.subject.name));
+            var meta = o.free ? (o.subject.elective ? 'วิชาเสริม · เลือกชั้น/ห้อง' : 'เลือกชั้น/ห้อง') : o.grade + '/' + o.section;
+            btn.appendChild(el('span', 'slot-opt-meta', meta));
+            btn.onclick = function () { choose(o, btn); };
+            list.appendChild(btn);
+        });
+        if (editing) {   // เลือกตัวเลือกเดิมของคาบนี้ไว้ให้ก่อน
+            var idx = -1;
+            opts.forEach(function (o, k) {
+                if (idx === -1 && o.subject.id === editing.subject && !o.free && o.grade === editing.grade && o.section === editing.section) idx = k;
+            });
+            if (idx === -1) opts.forEach(function (o, k) { if (idx === -1 && o.subject.id === editing.subject && o.free) idx = k; });
+            if (idx !== -1) choose(opts[idx], list.querySelectorAll('.slot-opt')[idx]);
+        }
+        if (editing && chosen && chosen.free) { gSel.value = editing.grade; rSel.value = String(editing.section); }
+        gSel.onchange = rSel.onchange = refreshSave; refreshSave();
+
+        function close() {
+            document.removeEventListener('keydown', onKey);
+            backdrop.classList.remove('show'); document.body.classList.remove('ui-modal-open');
+            setTimeout(function () { backdrop.remove(); }, 160);
+            if (prev && prev.focus) { try { prev.focus(); } catch (e) {} }
+        }
+        function onKey(e) { if (e.key === 'Escape' && !document.querySelector('.ui-modal-backdrop ~ .ui-modal-backdrop')) { close(); } }
+        document.addEventListener('keydown', onKey);
+        backdrop.addEventListener('mousedown', function (e) { if (e.target === backdrop) close(); });
+        cancel.onclick = close;
+        save.onclick = function () {
+            if (!chosen) return;
+            var grade = chosen.free ? gSel.value : chosen.grade, section = chosen.free ? rSel.value : chosen.section;
+            postForm(editing ? slotUrl(URL_EDIT, editing.id) : URL_NEW, {
+                subject_id: chosen.subject.id, day_of_week: day, period: period, duration: duration,
+                grade_level: grade, section: section
+            });
+        };
+        if (del) del.onclick = function () {
+            uiConfirm('ลบคาบสอนนี้ออกจากตาราง?', {okText: 'ลบคาบสอน', danger: true}).then(function (ok) {
+                if (ok) postForm(slotUrl(URL_DELETE, editing.id), {});
+            });
+        };
+        var firstBtn = list.querySelector('.slot-opt.active') || list.querySelector('.slot-opt') || cancel;
+        firstBtn.focus();
+    }
+
+    var table = document.getElementById('teacherScheduleTable');
+    function handle(td) {
+        var day = parseInt(td.dataset.day, 10), period = parseInt(td.dataset.period, 10);
+        if (td.dataset.slotId) {
+            open({day: day, period: period, slot: {
+                id: parseInt(td.dataset.slotId, 10), subject: parseInt(td.dataset.subjectId, 10),
+                grade: td.dataset.grade, section: parseInt(td.dataset.section, 10), duration: parseInt(td.dataset.duration, 10)}});
+        } else open({day: day, period: period});
+    }
+    table.addEventListener('click', function (e) { var td = e.target.closest('td.slot-click'); if (td) handle(td); });
+    table.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        var td = e.target.closest('td.slot-click'); if (td) { e.preventDefault(); handle(td); }
+    });
+})();
+</script>
+
+</details>
+
+<details class="section-toggle">
+<summary class="section-title">📚 จัดการรายวิชา</summary>
+{% for subj in subjects %}
+<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+            <div class="subject-name">{{ subj.name }} <span style="font-weight:400;color:#6b7280;">({{ subj.code }})</span>
+                {% if subj.is_elective %}<span class="badge badge-green">วิชาเสริม</span>{% endif %}</div>
+            <div class="subject-sub">{% if subj.uses_classes() %}ชั้น/ห้อง {{ subj.class_labels() }} · {% endif %}ห้องเรียนหลัก {{ subj.room or '-' }} · นักเรียน {{ subj.enrollments|length }} คน · ครู: {{ subj.teacher_names() }}</div>
+        </div>
+        <a class="btn btn-secondary" href="{{ url_for('teacher_subject', subject_id=subj.id) }}">จัดการงานและนักเรียน</a>
+    </div>
+    {% if not subj.is_elective %}
+    <details style="margin-top:10px;">
+        <summary style="cursor:pointer;color:#2563eb;font-size:0.9rem;">แก้ไขข้อมูลวิชา</summary>
+        <form method="POST" action="{{ url_for('edit_subject', subject_id=subj.id) }}" style="margin-top:10px;">
+            <label>ชื่อวิชา</label>
+            <input type="text" name="name" value="{{ subj.name }}" required>
+            <label>รหัสวิชา</label>
+            <input type="text" name="code" value="{{ subj.code }}">
+            <label>ห้องเรียนหลัก</label>
+            <input type="text" name="room" value="{{ subj.room }}">
+            {% if subj.classes|length > 1 %}
+            <p class="form-hint">วิชานี้ผูกหลายห้อง ({{ subj.class_labels() }}) จากข้อมูลเดิม — การแก้ไขนี้จะไม่เปลี่ยนห้อง หากต้องการแยกเป็นวิชาละห้อง ให้สร้างวิชาใหม่ทีละห้องแล้วลบวิชานี้</p>
+            {% else %}
+            {% set cur_grade = subj.classes[0].grade_level if subj.uses_classes() else '' %}
+            {% set cur_room = subj.classes[0].section if subj.uses_classes() else none %}
+            <label>ระดับชั้นที่สอน</label>
+            <select name="grade_level">
+                <option value="">{% if subj.uses_classes() %}— เลือกชั้น —{% else %}ยังไม่ผูกชั้น (ครูเพิ่มนักเรียนเอง){% endif %}</option>
+                {% for g in grade_levels %}<option value="{{ g }}" {% if g == cur_grade %}selected{% endif %}>{{ g }}</option>{% endfor %}
+            </select>
+            <label>ห้องที่สอน</label>
+            <div>
+            {% for r in sections %}
+                <label class="checkbox-line" style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;">
+                    <input type="radio" name="class_room" value="{{ r }}" style="width:auto;" {% if r == cur_room %}checked{% endif %}> ห้อง {{ r }}
+                </label>
+            {% endfor %}
+            </div>
+            <p class="form-hint">เมื่อเลือกชั้น/ห้อง นักเรียนทุกคนในห้องนั้นจะได้รับงานของวิชานี้อัตโนมัติ และรายชื่อเดิมของวิชาจะถูกแทนที่ด้วยรายชื่อนักเรียนในห้อง</p>
+            {% endif %}
+            <button type="submit" style="margin-top:10px;">บันทึกการแก้ไข</button>
+        </form>
+        <form method="POST" action="{{ url_for('delete_subject', subject_id=subj.id) }}"
+              data-confirm="ลบวิชานี้? งานทั้งหมดในวิชาจะถูกลบด้วย" style="margin-top:8px;">
+            <button type="submit" class="btn-danger">ลบวิชานี้</button>
+        </form>
+    </details>
+    {% else %}
+    <p style="margin-top:8px;font-size:0.8rem;color:#6b7280;">วิชาเสริมแก้ไข/ลบได้เฉพาะแอดมิน — ครูผู้สอนเพิ่มนักเรียนได้ที่ปุ่ม “จัดการงานและนักเรียน”</p>
+    {% endif %}
+</div>
+{% endfor %}
+
+<div class="card">
+    <h3>เพิ่มวิชาที่สอน</h3>
+    <form method="POST" action="{{ url_for('new_subject') }}">
+        <label>ชื่อวิชา</label>
+        <input type="text" name="name" required placeholder="เช่น ภาษาไทย">
+        <label>รหัสวิชา</label>
+        <input type="text" name="code" placeholder="เช่น TH101">
+        <label>ห้องเรียนหลัก</label>
+        <input type="text" name="room" placeholder="เช่น 302">
+        <label>ระดับชั้นที่สอน</label>
+        <select name="grade_level" required>
+            <option value="" disabled selected>— เลือกชั้น —</option>
+            {% for g in grade_levels %}<option value="{{ g }}">{{ g }}</option>{% endfor %}
+        </select>
+        <label>ห้องที่สอน</label>
+        <div>
+        {% for r in sections %}
+            <label class="checkbox-line" style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;">
+                <input type="radio" name="class_room" value="{{ r }}" style="width:auto;" required> ห้อง {{ r }}
+            </label>
+        {% endfor %}
+        </div>
+        <p class="form-hint">1 วิชาสร้างได้ 1 ห้อง — ถ้าสอนวิชาเดียวกันหลายห้อง ให้สร้างวิชาแยกทีละห้อง นักเรียนทุกคนในห้องที่เลือกจะได้รับงานของวิชานี้อัตโนมัติ</p>
+        <button type="submit" style="margin-top:12px;">เพิ่มวิชา</button>
+    </form>
+</div>
+</details>
+
+{% endblock %}
